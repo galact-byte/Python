@@ -75,4 +75,4 @@ pyinstaller –D main.spec
        
 dist目录下的main文件夹即发布生成的项目文件。  
 
-
+## 3.简单的收支计算
