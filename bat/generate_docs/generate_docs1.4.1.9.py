@@ -1,3 +1,4 @@
+# 从等保完结单中提取项目名称和项目编号整合到一个过程文档清单中，每个占一页，方便打印
 import re
 import sys
 from pathlib import Path
