@@ -79,9 +79,7 @@ def convert_ips():
 if __name__ == "__main__":
     try:
         convert_ips()
-        input("\n按回车键退出...")
     except KeyboardInterrupt:
         print("\n\n程序已取消")
     except Exception as e:
         print(f"\n程序出错: {e}")
-        input("按回车键退出...")
