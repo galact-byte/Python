@@ -7,6 +7,7 @@ import re
 import win32com.client
 import pythoncom
 
+# 批量重命名文件
 
 def extract_project_info_from_docx(docx_path):
     """
