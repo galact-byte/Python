@@ -1,0 +1,10 @@
+*.txt
+urls.py
+create_dir/
+guidang/False/
+tiqu1.1.py
+rename_invoices.py
+rename_invoices1.py
+tiqu.py
+generate_docs/False
+generate_docs/True
