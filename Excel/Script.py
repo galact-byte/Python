@@ -38,10 +38,10 @@ def extract_personnel_contribution(text):
     return text[:20] if len(text) > 20 else text
 
 
-def extract_project_basic_info(doc):
+def extract_project_basic_info(doc,department='软测部'):
     """提取项目基本信息"""
     basic_info = {
-        '部门': '软测部',
+        '部门': department,
         '项目编号': '',
         '项目名称': '',
         '客户单位名称': '',
@@ -209,11 +209,11 @@ def extract_systems_info(doc):
     return systems
 
 
-def process_single_doc(docx_path, start_sequence):
+def process_single_doc(docx_path, start_sequence,department='软测部'):
     """处理单个文档"""
     try:
         doc = Document(docx_path)
-        basic_info = extract_project_basic_info(doc)
+        basic_info = extract_project_basic_info(doc,department)
         systems = extract_systems_info(doc)
 
         project_type = basic_info['项目类型']
@@ -285,7 +285,7 @@ def get_quarter_from_date(date_str):
         return 1, datetime.now().year
 
 
-def batch_process_docs(input_folder='.', pattern='*.docx'):
+def batch_process_docs(input_folder='.', pattern='*.docx',department='软测部'):
     """批量处理文档"""
     folder_path = Path(input_folder)
     docx_files = list(folder_path.glob(pattern))
@@ -317,7 +317,7 @@ def batch_process_docs(input_folder='.', pattern='*.docx'):
     earliest_year = None
 
     for docx_file in docx_files:
-        records = process_single_doc(str(docx_file), current_sequence)
+        records = process_single_doc(str(docx_file), current_sequence,department)
         if records:
             all_records.extend(records)
             current_sequence += len(records)
@@ -383,6 +383,11 @@ def main():
     print("完结单批量导出工具")
     print("=" * 70)
 
+    # 询问部门
+    department = input("\n请输入部门名称（直接回车默认为'软测部'）:").strip()
+    if not department:
+        department = '软测部'
+    # print(f"当前部门:{department}")
     input_folder = "."
     file_pattern = "*完结单*.docx"
 
@@ -391,7 +396,7 @@ def main():
     print(f"  模式: {file_pattern}\n")
 
     try:
-        project_list, quarter, year = batch_process_docs(input_folder, file_pattern)
+        project_list, quarter, year = batch_process_docs(input_folder, file_pattern,department)
 
         if project_list:
             output_file = f"{year}年第{quarter}季度项目完结单.xlsx"
