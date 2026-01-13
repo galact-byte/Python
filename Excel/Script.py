@@ -72,7 +72,7 @@ def extract_project_basic_info(doc):
                     if '项目名称' in cell:
                         for k in range(j + 1, len(cells)):
                             candidate = cells[k].strip()
-                            # 修改判断条件：长度>8且不包含项目编号
+                            # 只要不为空、不是标题本身、不包含项目编号，就提取
                             if candidate and candidate != '项目名称' and 'QZX' not in candidate:
                                 basic_info['项目名称'] = candidate
                                 break
@@ -83,8 +83,9 @@ def extract_project_basic_info(doc):
                 for j, cell in enumerate(cells):
                     if '客户单位名称' in cell:
                         for k in range(j + 1, len(cells)):
-                            if cells[k] and ('公司' in cells[k] or '中心' in cells[k] or len(cells[k]) > 8):
-                                basic_info['客户单位名称'] = cells[k].strip()
+                            candidate = cells[k].strip()
+                            if candidate and candidate != '客户单位名称':
+                                basic_info['客户单位名称'] = candidate
                                 break
                         break
 
@@ -94,7 +95,7 @@ def extract_project_basic_info(doc):
                     if '项目地点' in cell:
                         for k in range(j + 1, len(cells)):
                             candidate = cells[k].strip()
-                            if candidate and candidate != '项目地点' and '、' not in candidate and len(candidate) <= 8:
+                            if candidate and candidate != '项目地点' and '、' not in candidate:
                                 basic_info['项目地点'] = candidate
                                 break
                         break
