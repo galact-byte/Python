@@ -2,6 +2,8 @@ import os
 import re
 
 
+## 当你有一堆用顿号或逗号分隔的IP/URL，需要转换成每行一个的格式时使用
+
 def detect_content_type(content):
     """检测内容类型：IP地址还是URL"""
     # 简单的IP地址正则
@@ -41,6 +43,9 @@ def convert_addresses():
                 print("输入不能为空，请重新输入!")
                 continue
         input_lines.append(line)
+
+        if not (line.endswith('、') or line.endswith(',') or line.endswith('，')):
+            break
 
     # 将所有行合并
     full_input = " ".join(input_lines)
