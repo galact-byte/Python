@@ -38,7 +38,7 @@ def extract_personnel_contribution(text):
     return text[:20] if len(text) > 20 else text
 
 
-def extract_project_basic_info(doc,department='软测部'):
+def extract_project_basic_info(doc, department='软测部'):
     """提取项目基本信息"""
     basic_info = {
         '部门': department,
@@ -209,11 +209,11 @@ def extract_systems_info(doc):
     return systems
 
 
-def process_single_doc(docx_path, start_sequence,department='软测部'):
+def process_single_doc(docx_path, start_sequence, department='软测部'):
     """处理单个文档"""
     try:
         doc = Document(docx_path)
-        basic_info = extract_project_basic_info(doc,department)
+        basic_info = extract_project_basic_info(doc, department)
         systems = extract_systems_info(doc)
 
         project_type = basic_info['项目类型']
@@ -255,37 +255,37 @@ def process_single_doc(docx_path, start_sequence,department='软测部'):
         return []
 
 
-def get_quarter_from_date(date_str):
-    """根据日期确定季度"""
-    if not date_str:
-        return 1, datetime.now().year
+# def get_quarter_from_date(date_str):
+#     """根据日期确定季度"""
+#     if not date_str:
+#         return 1, datetime.now().year
+#
+#     try:
+#         if '/' in date_str:
+#             date = datetime.strptime(date_str, '%Y/%m/%d')
+#         elif '-' in date_str:
+#             date = datetime.strptime(date_str, '%Y-%m-%d')
+#         else:
+#             return 1, datetime.now().year
+#
+#         month = date.month
+#         year = date.year
+#
+#         if month <= 3:
+#             quarter = 1
+#         elif month <= 6:
+#             quarter = 2
+#         elif month <= 9:
+#             quarter = 3
+#         else:
+#             quarter = 4
+#
+#         return quarter, year
+#     except:
+#         return 1, datetime.now().year
 
-    try:
-        if '/' in date_str:
-            date = datetime.strptime(date_str, '%Y/%m/%d')
-        elif '-' in date_str:
-            date = datetime.strptime(date_str, '%Y-%m-%d')
-        else:
-            return 1, datetime.now().year
 
-        month = date.month
-        year = date.year
-
-        if month <= 3:
-            quarter = 1
-        elif month <= 6:
-            quarter = 2
-        elif month <= 9:
-            quarter = 3
-        else:
-            quarter = 4
-
-        return quarter, year
-    except:
-        return 1, datetime.now().year
-
-
-def batch_process_docs(input_folder='.', pattern='*.docx',department='软测部'):
+def batch_process_docs(input_folder='.', pattern='*.docx', department='软测部'):
     """批量处理文档"""
     folder_path = Path(input_folder)
     docx_files = list(folder_path.glob(pattern))
@@ -316,25 +316,30 @@ def batch_process_docs(input_folder='.', pattern='*.docx',department='软测部'
     earliest_quarter = None
     earliest_year = None
 
-    for docx_file in docx_files:
-        records = process_single_doc(str(docx_file), current_sequence,department)
+    # for docx_file in docx_files:
+    #     records = process_single_doc(str(docx_file), current_sequence,department)
+    #     if records:
+    #         all_records.extend(records)
+    #         current_sequence += len(records)
+    #
+    #         if records[0].get('启动时间'):
+    #             quarter, year = get_quarter_from_date(records[0]['启动时间'])
+    #             if earliest_quarter is None or (year < earliest_year) or (
+    #                     year == earliest_year and quarter < earliest_quarter):
+    #                 earliest_quarter = quarter
+    #                 earliest_year = year
+    for docx_file in filtered_files:
+        records = process_single_doc(str(docx_file), current_sequence, department)
         if records:
             all_records.extend(records)
             current_sequence += len(records)
 
-            if records[0].get('启动时间'):
-                quarter, year = get_quarter_from_date(records[0]['启动时间'])
-                if earliest_quarter is None or (year < earliest_year) or (
-                        year == earliest_year and quarter < earliest_quarter):
-                    earliest_quarter = quarter
-                    earliest_year = year
-
     print(f"\n共提取 {len(all_records)} 条记录")
 
-    if earliest_quarter is None:
-        earliest_quarter, earliest_year = get_quarter_from_date(None)
+    # if earliest_quarter is None:
+    #     earliest_quarter, earliest_year = get_quarter_from_date(None)
 
-    return all_records, earliest_quarter, earliest_year
+    return all_records, None, None
 
 
 def export_to_excel(project_list, output_path, quarter, year):
@@ -383,20 +388,37 @@ def main():
     print("完结单批量导出工具")
     print("=" * 70)
 
-    # 询问部门
+    # 1.询问部门
     department = input("\n请输入部门名称（直接回车默认为'软测部'）:").strip()
     if not department:
         department = '软测部'
     # print(f"当前部门:{department}")
+
+    # 2.新增：询问年份和季度
+    now = datetime.now()
+    current_year = now.year
+    current_quarter = (now.month - 1) // 3 + 1
+
+    year_input = input(f"请输入归档年份（回车默认为{current_year}）:").strip()
+    year = int(year_input) if (year_input and year_input.isdigit()) else current_year
+
+    while True:
+        quarter_input = input(f"请输入归档季度(1/2/3/4，回车默认为{current_quarter}):").strip()
+        if not quarter_input:
+            quarter = current_quarter
+            break
+        if quarter_input in ['1', '2', '3', '4']:
+            quarter = int(quarter_input)
+            break
+        print("输入无效，请重新输入！")
     input_folder = "."
     file_pattern = "*完结单*.docx"
-
     print(f"\n配置:")
     print(f"  文件夹: {input_folder}")
     print(f"  模式: {file_pattern}\n")
 
     try:
-        project_list, quarter, year = batch_process_docs(input_folder, file_pattern,department)
+        project_list, _, _ = batch_process_docs(input_folder, file_pattern, department)
 
         if project_list:
             output_file = f"{year}年第{quarter}季度项目完结单.xlsx"
