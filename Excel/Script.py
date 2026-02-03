@@ -13,6 +13,10 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 from openpyxl.styles import Alignment
+from colorama import init, Fore, Style
+
+# 初始化颜色
+init(autoreset=True)
 
 
 def extract_personnel_contribution(text):
@@ -27,7 +31,7 @@ def extract_personnel_contribution(text):
     text_combined = ' '.join(text.replace('\n', ' ').split())
 
     # 匹配所有"姓名：...（百分比）"的模式
-    pattern = r'([^：:：\s]+)\s*[：:：][^（(]*[（(](\d+%)[)）]'
+    pattern = r'([^：:：\s（(]+)\s*(?:[：:：][^（(]*)?[（(](\d+%)[)）]'
     matches = re.findall(pattern, text_combined)
 
     if matches:
@@ -255,36 +259,6 @@ def process_single_doc(docx_path, start_sequence, department='软测部'):
         return []
 
 
-# def get_quarter_from_date(date_str):
-#     """根据日期确定季度"""
-#     if not date_str:
-#         return 1, datetime.now().year
-#
-#     try:
-#         if '/' in date_str:
-#             date = datetime.strptime(date_str, '%Y/%m/%d')
-#         elif '-' in date_str:
-#             date = datetime.strptime(date_str, '%Y-%m-%d')
-#         else:
-#             return 1, datetime.now().year
-#
-#         month = date.month
-#         year = date.year
-#
-#         if month <= 3:
-#             quarter = 1
-#         elif month <= 6:
-#             quarter = 2
-#         elif month <= 9:
-#             quarter = 3
-#         else:
-#             quarter = 4
-#
-#         return quarter, year
-#     except:
-#         return 1, datetime.now().year
-
-
 def batch_process_docs(input_folder='.', pattern='*.docx', department='软测部'):
     """批量处理文档"""
     folder_path = Path(input_folder)
@@ -313,33 +287,36 @@ def batch_process_docs(input_folder='.', pattern='*.docx', department='软测部
 
     all_records = []
     current_sequence = 1
-    earliest_quarter = None
-    earliest_year = None
+    warnings = []
 
-    # for docx_file in docx_files:
-    #     records = process_single_doc(str(docx_file), current_sequence,department)
-    #     if records:
-    #         all_records.extend(records)
-    #         current_sequence += len(records)
-    #
-    #         if records[0].get('启动时间'):
-    #             quarter, year = get_quarter_from_date(records[0]['启动时间'])
-    #             if earliest_quarter is None or (year < earliest_year) or (
-    #                     year == earliest_year and quarter < earliest_quarter):
-    #                 earliest_quarter = quarter
-    #                 earliest_year = year
     for docx_file in filtered_files:
         records = process_single_doc(str(docx_file), current_sequence, department)
         if records:
             all_records.extend(records)
+
+            # 检查该项目所有系统的人员贡献率总和
+            project_name = records[0].get('项目名称', '未知项目')
+            # print(f"  检查 {project_name} 项目所有系统的人员贡献率总和")
+
+            # 按系统分组检查
+            for record in records:
+                system_name = record.get('系统名称', '/')
+                contribution_text = record.get('人员贡献率', '')
+
+                if contribution_text:
+                    # 提取人员贡献率
+                    percentages = re.findall(r'(\d+)%', contribution_text)
+                    if percentages:
+                        total = sum(int(p) for p in percentages)
+                        display_name = system_name if system_name else '主系统'
+
+                        if total != 100:
+                            warning_msg = f"[{display_name}]贡献率总和为{total}%,不等于100%,请检查！\n     详情:{contribution_text}"
+                            warnings.append((project_name, warning_msg))
             current_sequence += len(records)
 
     print(f"\n共提取 {len(all_records)} 条记录")
-
-    # if earliest_quarter is None:
-    #     earliest_quarter, earliest_year = get_quarter_from_date(None)
-
-    return all_records, None, None
+    return all_records, warnings, None
 
 
 def export_to_excel(project_list, output_path, quarter, year):
@@ -418,7 +395,7 @@ def main():
     print(f"  模式: {file_pattern}\n")
 
     try:
-        project_list, _, _ = batch_process_docs(input_folder, file_pattern, department)
+        project_list, warnings, _ = batch_process_docs(input_folder, file_pattern, department)
 
         if project_list:
             output_file = f"{year}年第{quarter}季度项目完结单.xlsx"
@@ -444,6 +421,15 @@ def main():
         print(f"\n错误: {str(e)}")
         import traceback
         traceback.print_exc()
+
+    if 'warnings' in locals() and warnings:
+        print("\n" + "=" * 70)
+        print(f"{Fore.RED} 人员贡献率检查 - 发现{len(warnings)}个问题:{Style.RESET_ALL}")
+        print("=" * 70)
+        for proj_name, warning in warnings:
+            print(f"\n{Fore.YELLOW}项目:{proj_name}{Style.RESET_ALL}")
+            print(f"  {Fore.RED}{warning}{Style.RESET_ALL}")
+        print("=" * 70)
 
 
 if __name__ == "__main__":
