@@ -16,3 +16,11 @@ txt/
 errors.log
 translate_missions.py
 运行.bat
+competation/
+Image_classification/
+*.txt
+merge_manga.py
+merge_manga1.py
+Rename.py
+resize.py
+ziduan.py
