@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+
+# API配置和密钥 (重要!)
+.env
+translation_config.json
+quality_config.json
+api_presets.json
+
+# 用户数据文件
+*.json
+!example_*.json
+!translation_config.example.json
+
+# IDE文件
+.vscode/
+.idea/
+*.swp
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 报告和临时文件
+quality_report.txt
+*.log
+*.tmp
