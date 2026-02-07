@@ -247,7 +247,7 @@ class FanboxScraper:
 
         if not title or not images:
             print("  ⚠️ 跳过（无标题或无图片）")
-            with open('failed_posts.txt', 'a', encoding='utf-8') as f:
+            with open('../../failed_posts.txt', 'a', encoding='utf-8') as f:
                 f.write(f"{post_url}\n")
             return
 
