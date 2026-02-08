@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QSpinBox, QInputDialog, QSplitter
 )
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
-from PyQt6.QtGui import QFont, QTextCursor
+from PyQt6.QtGui import QFont, QTextCursor, QPixmap, QPainter, QColor, QBrush
 
 # 导入我们的模块
 from merge_translations import merge_translations as do_merge
@@ -222,12 +222,18 @@ class TranslationGUI(QMainWindow):
         self.config_file = Path("translation_config.json")
         self.presets_file = Path("api_presets.json")
         self.quality_config_file = Path("quality_config.json")
+        self.appearance_config_file = Path("appearance_config.json")
         self.presets = {}  # 预设存储
         self.env_keys = self.load_env_keys()  # 从.env加载的密钥
+        # 背景图相关
+        self.background_pixmap = None
+        self.background_image_path = ""  # 完整路径
+        self.background_opacity = 0.3  # 背景图遮罩透明度
         self.init_ui()
         self.load_presets()
         self.load_config()
         self.load_quality_config()
+        self.load_appearance_config()
     
     def load_env_keys(self):
         """从.env文件加载API密钥"""
@@ -278,6 +284,10 @@ class TranslationGUI(QMainWindow):
         # 第四步：质量检查
         tab4 = self.create_quality_tab()
         tabs.addTab(tab4, "4️⃣ 质量检查")
+        
+        # 第五步：外观设置
+        tab5 = self.create_appearance_tab()
+        tabs.addTab(tab5, "🎨 外观设置")
         
         # 标签页放入splitter
         splitter.addWidget(tabs)
@@ -651,6 +661,216 @@ class TranslationGUI(QMainWindow):
         layout.addWidget(result_group)
         
         return widget
+    
+    def create_appearance_tab(self):
+        """创建外观设置标签页"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # 说明
+        info = QLabel("🎨 说明：自定义界面外观，添加背景图片美化界面")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        
+        # 背景图设置
+        bg_group = QGroupBox("背景图片")
+        bg_layout = QVBoxLayout()
+        
+        # 当前背景图显示
+        self.bg_path_label = QLabel("当前背景：无")
+        self.bg_path_label.setWordWrap(True)
+        bg_layout.addWidget(self.bg_path_label)
+        
+        # 预览区域
+        self.bg_preview = QLabel()
+        self.bg_preview.setFixedHeight(150)
+        self.bg_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.bg_preview.setStyleSheet("background-color: #f0f0f0; border: 1px dashed #ccc;")
+        self.bg_preview.setText("背景图预览")
+        bg_layout.addWidget(self.bg_preview)
+        
+        # 按钮区域
+        btn_layout = QHBoxLayout()
+        btn_select_bg = QPushButton("🖼️ 选择背景图")
+        btn_select_bg.clicked.connect(self.select_background_image)
+        btn_layout.addWidget(btn_select_bg)
+        
+        btn_clear_bg = QPushButton("🗑️ 清除背景图")
+        btn_clear_bg.clicked.connect(self.clear_background_image)
+        btn_layout.addWidget(btn_clear_bg)
+        
+        btn_layout.addStretch()
+        bg_layout.addLayout(btn_layout)
+        
+        bg_group.setLayout(bg_layout)
+        layout.addWidget(bg_group)
+        
+        # 透明度设置
+        opacity_group = QGroupBox("遮罩设置")
+        opacity_layout = QVBoxLayout()
+        
+        hint = QLabel("⚠️ 遮罩可以让背景图变淡，确保文字和按钮清晰可见")
+        hint.setStyleSheet("color: #666; font-size: 11px;")
+        opacity_layout.addWidget(hint)
+        
+        slider_layout = QHBoxLayout()
+        slider_layout.addWidget(QLabel("遮罩强度:"))
+        
+        from PyQt6.QtWidgets import QSlider
+        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.opacity_slider.setMinimum(10)  # 0.1
+        self.opacity_slider.setMaximum(80)  # 0.8
+        self.opacity_slider.setValue(int(self.background_opacity * 100))
+        self.opacity_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.opacity_slider.setTickInterval(10)
+        self.opacity_slider.valueChanged.connect(self.on_opacity_changed)
+        slider_layout.addWidget(self.opacity_slider)
+        
+        self.opacity_label = QLabel(f"{int(self.background_opacity * 100)}%")
+        self.opacity_label.setMinimumWidth(40)
+        slider_layout.addWidget(self.opacity_label)
+        
+        opacity_layout.addLayout(slider_layout)
+        opacity_group.setLayout(opacity_layout)
+        layout.addWidget(opacity_group)
+        
+        layout.addStretch()
+        return widget
+    
+    def select_background_image(self):
+        """选择背景图片"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "选择背景图片", "", 
+            "图片文件 (*.png *.jpg *.jpeg *.bmp *.webp);;所有文件 (*)"
+        )
+        if filename:
+            self.set_background_image(filename)
+            self.save_appearance_config()
+            self.log(f"✅ 已设置背景图: {filename}")
+    
+    def set_background_image(self, filepath):
+        """设置背景图片"""
+        if filepath and Path(filepath).exists():
+            self.background_image_path = filepath  # 保存完整路径
+            self.background_pixmap = QPixmap(filepath)
+            self.bg_path_label.setText(f"当前背景：{Path(filepath).name}")
+            # 更新预览
+            preview_pixmap = self.background_pixmap.scaled(
+                self.bg_preview.width(), self.bg_preview.height(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.bg_preview.setPixmap(preview_pixmap)
+            # 应用样式
+            self.apply_background_style()
+            self.update()
+        else:
+            self.background_pixmap = None
+            self.background_image_path = ""
+    
+    def clear_background_image(self):
+        """清除背景图片"""
+        self.background_pixmap = None
+        self.background_image_path = ""
+        self.bg_path_label.setText("当前背景：无")
+        self.bg_preview.clear()
+        self.bg_preview.setText("背景图预览")
+        self.apply_background_style()
+        self.save_appearance_config()
+        self.update()
+        self.log("✅ 已清除背景图")
+    
+    def on_opacity_changed(self, value):
+        """透明度滑块变化"""
+        self.background_opacity = value / 100.0
+        self.opacity_label.setText(f"{value}%")
+        self.apply_background_style()
+        self.save_appearance_config()
+        self.update()
+    
+    def apply_background_style(self):
+        """应用背景样式 - 为控件添加半透明背景"""
+        if self.background_pixmap:
+            # 有背景图时，为控件添加半透明白色背景
+            opacity = int(255 * (0.7 + self.background_opacity * 0.3))  # 70%-100%
+            style = f"""
+                QGroupBox {{
+                    background-color: rgba(255, 255, 255, {opacity});
+                    border-radius: 5px;
+                    margin-top: 10px;
+                    padding-top: 15px;
+                }}
+                QTabWidget::pane {{
+                    background-color: rgba(255, 255, 255, {opacity});
+                    border-radius: 5px;
+                }}
+                QTextEdit, QLineEdit, QComboBox {{
+                    background-color: rgba(255, 255, 255, 240);
+                }}
+            """
+            self.setStyleSheet(style)
+        else:
+            # 无背景图时清除样式
+            self.setStyleSheet("")
+    
+    def load_appearance_config(self):
+        """加载外观配置"""
+        if self.appearance_config_file.exists():
+            try:
+                with open(self.appearance_config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                
+                # 加载背景图
+                bg_path = config.get("background_image", "")
+                if bg_path and Path(bg_path).exists():
+                    self.set_background_image(bg_path)
+                
+                # 加载透明度
+                opacity = config.get("background_opacity", 0.3)
+                self.background_opacity = opacity
+                if hasattr(self, 'opacity_slider'):
+                    self.opacity_slider.setValue(int(opacity * 100))
+                    self.opacity_label.setText(f"{int(opacity * 100)}%")
+                
+            except Exception as e:
+                self.log(f"⚠️ 加载外观配置失败: {e}")
+    
+    def save_appearance_config(self):
+        """保存外观配置"""
+        try:
+            config = {
+                "background_opacity": self.background_opacity,
+                "background_image": self.background_image_path
+            }
+            
+            with open(self.appearance_config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+                
+        except Exception as e:
+            self.log(f"⚠️ 保存外观配置失败: {e}")
+    
+    def paintEvent(self, event):
+        """重写绘制事件，绘制背景图"""
+        super().paintEvent(event)
+        
+        if self.background_pixmap:
+            painter = QPainter(self)
+            
+            # 缩放图片以填充窗口（保持比例）
+            scaled_pixmap = self.background_pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            
+            # 居中绘制
+            x = (self.width() - scaled_pixmap.width()) // 2
+            y = (self.height() - scaled_pixmap.height()) // 2
+            painter.drawPixmap(x, y, scaled_pixmap)
+            
+            # 绘制半透明白色遮罩
+            overlay_color = QColor(255, 255, 255, int(255 * self.background_opacity))
+            painter.fillRect(self.rect(), overlay_color)
     
     def browse_file(self, line_edit):
         """浏览选择文件"""
