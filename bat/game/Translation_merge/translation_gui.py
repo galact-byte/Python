@@ -1286,14 +1286,31 @@ class TranslationGUI(QMainWindow):
             return
         
         name = name.strip()
+        current_key = self.api_key.text()
+        
+        # 检测当前key是否匹配.env中的某个key
+        env_key_name = None
+        for env_name, env_value in self.env_keys.items():
+            if env_value and current_key == env_value:
+                env_key_name = env_name
+                break
         
         # 保存当前配置到预设
-        self.presets[name] = {
+        preset_data = {
             "provider": self.api_provider.currentText(),
-            "api_key": self.api_key.text(),
             "model": self.api_model.text(),
             "base_url": self.api_base_url.text()
         }
+        
+        # 如果匹配.env中的key，保存引用而不是实际key值
+        if env_key_name:
+            preset_data["env_key_name"] = env_key_name
+            # 不保存api_key，从.env恢复
+        else:
+            # 用户手动输入的key，直接保存
+            preset_data["api_key"] = current_key
+        
+        self.presets[name] = preset_data
         
         # 保存到文件
         try:
@@ -1307,7 +1324,10 @@ class TranslationGUI(QMainWindow):
             if index >= 0:
                 self.preset_combo.setCurrentIndex(index)
             
-            self.log(f"✅ 预设 '{name}' 已保存")
+            if env_key_name:
+                self.log(f"✅ 预设 '{name}' 已保存 (API Key来自.env: {env_key_name})")
+            else:
+                self.log(f"✅ 预设 '{name}' 已保存")
             QMessageBox.information(self, "成功", f"预设 '{name}' 已保存！")
         except Exception as e:
             QMessageBox.warning(self, "警告", f"保存预设失败: {e}")
@@ -1346,7 +1366,14 @@ class TranslationGUI(QMainWindow):
             if index >= 0:
                 self.api_provider.setCurrentIndex(index)
         
-        if "api_key" in config:
+        # 恢复API Key：优先从.env恢复，否则使用保存的值
+        if "env_key_name" in config:
+            env_key_name = config["env_key_name"]
+            api_key = self.env_keys.get(env_key_name, "")
+            self.api_key.setText(api_key)
+            if not api_key:
+                self.log(f"⚠️ .env中未找到 {env_key_name}，请手动填写API Key")
+        elif "api_key" in config:
             self.api_key.setText(config["api_key"])
         
         if "model" in config:
