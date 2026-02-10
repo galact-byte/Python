@@ -806,6 +806,13 @@ class TranslationGUI(QMainWindow):
                 }}
                 QTextEdit, QLineEdit, QComboBox {{
                     background-color: rgba(255, 255, 255, 240);
+                    color: #333;
+                }}
+                QComboBox QAbstractItemView {{
+                    background-color: rgba(255, 255, 255, 245);
+                    color: #333;
+                    selection-background-color: #0078d4;
+                    selection-color: #fff;
                 }}
             """
             self.setStyleSheet(style)
