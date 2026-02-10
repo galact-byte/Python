@@ -1404,17 +1404,34 @@ class TranslationGUI(QMainWindow):
     
     def save_config(self):
         """保存API配置"""
+        current_key = self.api_key.text()
+
+        # 检测当前key是否匹配.env中的某个key
+        env_key_name = None
+        for env_name, env_value in self.env_keys.items():
+            if env_value and current_key == env_value:
+                env_key_name = env_name
+                break
+
         config = {
             "provider": self.api_provider.currentText(),
-            "api_key": self.api_key.text(),
             "model": self.api_model.text(),
             "base_url": self.api_base_url.text()
         }
-        
+
+        # 如果匹配.env中的key，保存引用而不是实际key值
+        if env_key_name:
+            config["env_key_name"] = env_key_name
+        else:
+            config["api_key"] = current_key
+
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, ensure_ascii=False, indent=2)
-            self.log("✅ API配置已保存")
+            if env_key_name:
+                self.log(f"✅ API配置已保存 (API Key来自.env: {env_key_name})")
+            else:
+                self.log("✅ API配置已保存")
             QMessageBox.information(self, "成功", "API配置已保存！")
         except Exception as e:
             QMessageBox.warning(self, "警告", f"保存配置失败: {e}")
@@ -1434,7 +1451,12 @@ class TranslationGUI(QMainWindow):
                 if index >= 0:
                     self.api_provider.setCurrentIndex(index)
             
-            if "api_key" in config:
+            if "env_key_name" in config:
+                # 从.env中恢复API Key
+                api_key = self.env_keys.get(config["env_key_name"], "")
+                if api_key:
+                    self.api_key.setText(api_key)
+            elif "api_key" in config:
                 self.api_key.setText(config["api_key"])
             
             if "model" in config:
