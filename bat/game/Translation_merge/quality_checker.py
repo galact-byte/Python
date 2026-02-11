@@ -46,6 +46,10 @@ def should_skip_for_quality_check(text: str) -> bool:
     # 文件名
     if re.match(r'^.*\.(png|jpg|json|motion3\.json|pic)$', text, re.IGNORECASE):
         return True
+
+    # 文件/目录路径（包含2个以上斜杠的路径格式）
+    if text.count('/') >= 2 or text.count('\\') >= 2:
+        return True
     
     # 纯假名字符表（字体测试）
     if len(text) > 50 and calculate_japanese_ratio(text) > 0.9:
