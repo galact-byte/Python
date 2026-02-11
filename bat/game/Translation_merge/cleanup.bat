@@ -15,6 +15,5 @@ del /f /q final_translation.json 2>nul
 del /f /q quality_report.txt 2>nul
 del /f /q cleanup_log.txt 2>nul
 
-echo 清理完成！
-echo 已保留配置文件: translation_config.json, api_presets.json, appearance_config.json, quality_config.json, .env
+echo 清理完成！配置文件不会被删除
 pause
