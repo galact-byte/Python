@@ -70,7 +70,7 @@ def chat_with_model(message):
 
     if retrieve_text:
         enhanced_message = f"""
-        你必须只根据下面提供的知识回答问题。如果知识中没有相关内容，请回答：无法从知识库中找到答案。
+        你必须先根据下面提供的知识回答问题。如果知识中没有相关内容，请回答：无法从知识库中找到答案，然后再根据自身知识回答。
         以下是相关知识:
         {retrieve_text}
 
