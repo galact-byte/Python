@@ -66,26 +66,19 @@ def chat_with_model(message):
     # 检索知识
     retrieve_text = retrieve_knowledge(message)
 
-    print("检索结果:", retrieve_text)
+    # print("检索结果:", retrieve_text)
 
-    # if retrieve_text:
-    #     enhanced_message = f"""
-    #     你必须只根据下面提供的知识回答问题。如果知识中没有相关内容，请回答：无法从知识库中找到答案。
-    #     以下是相关知识:
-    #     {retrieve_text}
-    #
-    #     请根据提供的知识，回答问题：
-    #     {message}
-    #     """
-    # else:
-    #     enhanced_message = message
-    enhanced_message = f"""
-    你必须只根据下面提供的知识回答问题。如果知识中没有相关内容，请回答：无法从知识库中找到答案。
-    以下是相关知识:
-    {retrieve_text}     
-    请根据提供的知识，回答问题：
-    {message}
-    """
+    if retrieve_text:
+        enhanced_message = f"""
+        你必须只根据下面提供的知识回答问题。如果知识中没有相关内容，请回答：无法从知识库中找到答案。
+        以下是相关知识:
+        {retrieve_text}
+
+        请根据提供的知识，回答问题：
+        {message}
+        """
+    else:
+        enhanced_message = message
 
     # 添加用户输入
     conversation_history.append({"role": "user", "content": enhanced_message})
