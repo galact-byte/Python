@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixiv 作品批量打开工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            padding: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: monospace;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #38a169;
+        }
+        
+        .info-box {
+            background: #f7fafc;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .info-box h3 {
+            color: #667eea;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        
+        .info-box p {
+            color: #4a5568;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-card .number {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card .label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .url-list {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 13px;
+            line-height: 1.8;
+            display: none;
+        }
+        
+        .url-list.show {
+            display: block;
+        }
+        
+        .url-list a {
+            color: #667eea;
+            text-decoration: none;
+            display: block;
+        }
+        
+        .url-list a:hover {
+            text-decoration: underline;
+        }
+        
+        .warning {
+            background: #fff5f5;
+            border-left: 4px solid #f56565;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        
+        .warning h3 {
+            color: #f56565;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        
+        .warning p {
+            color: #742a2a;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Pixiv 作品批量工具</h1>
+        <p class="subtitle">从特殊格式文本中提取Pixiv作品ID并批量打开</p>
+        
+        <div class="warning">
+            <h3>⚠️ 使用提示</h3>
+            <p>• 建议先在Pixiv网站登录，然后再批量打开链接<br>
+               • 一次打开太多链接可能会被浏览器阻止，建议分批打开<br>
+               • 建议配合浏览器下载插件使用（如 Pixiv Toolkit）</p>
+        </div>
+        
+        <div class="input-group">
+            <label for="inputText">粘贴包含ID的文本：</label>
+            <textarea id="inputText" placeholder="例如：id：100268677|||id：100333887|||id：100364267..."></textarea>
+        </div>
+        
+        <div class="button-group">
+            <button class="btn-primary" onclick="extractIDs()">提取ID</button>
+            <button class="btn-secondary" onclick="clearAll()">清空</button>
+        </div>
+        
+        <div class="stats" id="stats" style="display: none;">
+            <div class="stat-card">
+                <div class="number" id="totalIDs">0</div>
+                <div class="label">总ID数</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="uniqueIDs">0</div>
+                <div class="label">唯一ID数</div>
+            </div>
+        </div>
+        
+        <div class="info-box" id="resultBox" style="display: none;">
+            <h3>✓ 提取成功！</h3>
+            <p id="resultText"></p>
+        </div>
+        
+        <div class="button-group" id="actionButtons" style="display: none;">
+            <button class="btn-success" onclick="openAll()">批量打开 (谨慎使用)</button>
+            <button class="btn-primary" onclick="openBatch()">分批打开 (每批10个)</button>
+            <button class="btn-secondary" onclick="copyURLs()">复制URL列表</button>
+            <button class="btn-secondary" onclick="downloadAsText()">下载为文本</button>
+        </div>
+        
+        <div class="url-list" id="urlList"></div>
+    </div>
+    
+    <script>
+        let extractedIDs = [];
+        let currentBatch = 0;
+        
+        function extractIDs() {
+            const text = document.getElementById('inputText').value;
+            if (!text.trim()) {
+                alert('请先粘贴文本！');
+                return;
+            }
+            
+            // 提取所有ID
+            const pattern = /id：(\d+)/g;
+            const allIDs = [];
+            let match;
+            
+            while ((match = pattern.exec(text)) !== null) {
+                allIDs.push(match[1]);
+            }
+            
+            if (allIDs.length === 0) {
+                alert('未找到任何ID！');
+                return;
+            }
+            
+            // 去重
+            extractedIDs = [...new Set(allIDs)];
+            
+            // 更新统计
+            document.getElementById('totalIDs').textContent = allIDs.length;
+            document.getElementById('uniqueIDs').textContent = extractedIDs.length;
+            document.getElementById('stats').style.display = 'grid';
+            
+            // 显示结果
+            const duplicates = allIDs.length - extractedIDs.length;
+            document.getElementById('resultText').textContent = 
+                `找到 ${allIDs.length} 个ID，去重后剩余 ${extractedIDs.length} 个唯一ID` +
+                (duplicates > 0 ? `（去除了 ${duplicates} 个重复ID）` : '');
+            document.getElementById('resultBox').style.display = 'block';
+            
+            // 显示操作按钮
+            document.getElementById('actionButtons').style.display = 'flex';
+            
+            // 显示URL列表
+            displayURLs();
+            
+            currentBatch = 0;
+        }
+        
+        function displayURLs() {
+            const urlList = document.getElementById('urlList');
+            urlList.innerHTML = extractedIDs
+                .map(id => `<a href="https://www.pixiv.net/artworks/${id}" target="_blank">https://www.pixiv.net/artworks/${id}</a>`)
+                .join('\n');
+            urlList.classList.add('show');
+        }
+        
+        function openAll() {
+            if (!confirm(`确定要一次性打开 ${extractedIDs.length} 个链接吗？\n\n这可能会导致浏览器卡顿或被阻止弹窗。\n建议使用"分批打开"功能。`)) {
+                return;
+            }
+            
+            extractedIDs.forEach(id => {
+                window.open(`https://www.pixiv.net/artworks/${id}`, '_blank');
+            });
+        }
+        
+        function openBatch() {
+            const batchSize = 10;
+            const start = currentBatch * batchSize;
+            const end = Math.min(start + batchSize, extractedIDs.length);
+            
+            if (start >= extractedIDs.length) {
+                alert('所有链接已打开完毕！');
+                currentBatch = 0;
+                return;
+            }
+            
+            for (let i = start; i < end; i++) {
+                window.open(`https://www.pixiv.net/artworks/${extractedIDs[i]}`, '_blank');
+            }
+            
+            currentBatch++;
+            
+            const remaining = extractedIDs.length - end;
+            if (remaining > 0) {
+                alert(`已打开第 ${currentBatch} 批 (${end} / ${extractedIDs.length})\n还剩 ${remaining} 个链接`);
+            } else {
+                alert(`已完成！共打开 ${extractedIDs.length} 个链接`);
+                currentBatch = 0;
+            }
+        }
+        
+        function copyURLs() {
+            const urls = extractedIDs.map(id => `https://www.pixiv.net/artworks/${id}`).join('\n');
+            navigator.clipboard.writeText(urls).then(() => {
+                alert('URL列表已复制到剪贴板！');
+            }).catch(() => {
+                // 备用方法
+                const textarea = document.createElement('textarea');
+                textarea.value = urls;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('URL列表已复制到剪贴板！');
+            });
+        }
+        
+        function downloadAsText() {
+            const urls = extractedIDs.map(id => `https://www.pixiv.net/artworks/${id}`).join('\n');
+            const blob = new Blob([urls], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'pixiv_urls.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        function clearAll() {
+            document.getElementById('inputText').value = '';
+            document.getElementById('stats').style.display = 'none';
+            document.getElementById('resultBox').style.display = 'none';
+            document.getElementById('actionButtons').style.display = 'none';
+            document.getElementById('urlList').classList.remove('show');
+            extractedIDs = [];
+            currentBatch = 0;
+        }
+    </script>
+</body>
+</html>
