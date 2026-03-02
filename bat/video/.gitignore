@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+.omc/
+
+# 运行时生成的配置文件
+inspector_settings.json
+
+# 编辑器/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Video2X 输出
+ai_upscaled/
+*_ai.mp4
+*_ai.mkv
+*_tmp_upscale.*
