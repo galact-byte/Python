@@ -1,6 +1,3 @@
-# www~
-# 依赖: pip install curl_cffi python-dotenv
-
 import json
 import os
 import re
