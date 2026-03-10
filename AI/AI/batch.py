@@ -1,6 +1,3 @@
-# 批量注册 ChatGPT 账号并导入 CLIProxyAPI
-# 依赖: pip install curl_cffi python-dotenv
-
 import json
 import os
 import re
