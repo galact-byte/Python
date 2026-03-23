@@ -1,14 +1,27 @@
-# 等保测评数据爬虫
+# 项目进度数据爬虫
 
-从项目管理系统自动爬取等保测评项目数据，导出为 Excel 文件。
+从内部项目管理系统自动爬取项目进度数据，导出为 Excel 文件。支持 7 种项目类型。
 
 ## 功能
 
 - 自动登录（OCR 验证码识别，无需手动操作）
 - 全量分页爬取（自动遍历所有页）
 - 导出格式化 Excel（24 列字段，带样式/冻结首行/自动筛选）
-- 支持定时任务和手动执行两种模式
+- 支持 7 种项目类型，可单选或全部爬取
+- Web GUI 界面（浏览器操作，可视化日志）
 - Cookie 自动管理（过期自动重新登录）
+
+## 支持的项目类型
+
+| 类型 Key | 名称 | API 路径 |
+|:---|:---|:---|
+| `dengbao` | 等保测评 | `/djcp/projectstatus/index` |
+| `password` | 密码评估 | `/smcp/projectstatus/index` |
+| `security` | 安全评估 | `/aqpg/projectstatus/index` |
+| `risk` | 风险评估 | `/fxpg/projectstatus/index` |
+| `testing` | 软件测试 | `/rjcs/projectstatus/index` |
+| `service` | 安全服务 | `/aqfw/projectstatus/index` |
+| `comprehensive` | 综合服务 | `/zhfw/projectstatus/index` |
 
 ## 依赖
 
@@ -25,35 +38,62 @@ ddddocr
 pip install requests cryptography openpyxl ddddocr
 ```
 
-## 使用方法
+## 配置
 
-### 全自动运行（推荐）
+复制 `config.example.json` 为 `config.json`，填入实际配置：
 
 ```bash
-python scraper.py
+cp config.example.json config.json
 ```
 
-自动完成：登录 → 爬取全部数据 → 导出 Excel 到 `output/` 目录。
+```json
+{
+  "base_url": "https://your-server/XYivUozEqQ.php",
+  "pfx_path": "C:\\path\\to\\your.pfx",
+  "pfx_password": null,
+  "username": "your_username",
+  "password": "your_password",
+  "cookie": "",
+  "page_size": 50,
+  "output_dir": ""
+}
+```
 
-### 手动指定 Cookie
+| 字段 | 说明 |
+|------|------|
+| `base_url` | 项目管理系统地址 |
+| `pfx_path` | 客户端 PFX 证书路径（用于 HTTPS 双向认证） |
+| `pfx_password` | PFX 密码，无密码填 `null` |
+| `username` / `password` | 系统登录账号密码 |
+| `cookie` | PHPSESSID，留空则自动登录（OCR 验证码） |
+| `page_size` | 每页爬取数量，默认 50 |
+| `output_dir` | 输出目录，留空则默认 `output/` |
 
-如果自动登录失败，可以从浏览器获取 Cookie：
+> `config.json` 包含敏感凭据，已在 `.gitignore` 中忽略。
 
-1. 浏览器打开系统页面，F12 → Application → Cookies → 复制 `PHPSESSID` 的值
-2. 运行：
+## 使用方法
+
+### CLI 模式
 
 ```bash
+# 默认爬取等保测评
+python scraper.py
+
+# 指定项目类型
+python scraper.py --type password
+
+# 爬取全部类型
+python scraper.py --type all
+
+# 手动指定 Cookie（跳过自动登录）
 python scraper.py --cookie <PHPSESSID值>
 ```
 
-### Windows 双击启动
-
-直接双击 `start.bat`。
-
-### 命令行参数
+#### 命令行参数
 
 | 参数 | 说明 | 示例 |
 |:---|:---|:---|
+| `--type` | 项目类型，默认 `dengbao`，可选 `all` | `--type all` |
 | `--cookie` | 手动指定 PHPSESSID | `--cookie abc123` |
 | `--username` | 登录账号 | `--username admin` |
 | `--password` | 登录密码 | `--password 123456` |
@@ -62,37 +102,34 @@ python scraper.py --cookie <PHPSESSID值>
 | `--output` | 输出目录 | `--output ./data` |
 | `--limit` | 每页数量（默认 50） | `--limit 100` |
 
-## 配置文件
+### Web GUI 模式
 
-首次运行后会在脚本同目录生成 `config.json`，保存账号、密码、证书路径等配置：
-
-```json
-{
-  "base_url": "https://10.10.10.215/XYivUozEqQ.php",
-  "pfx_path": "C:\\path\\to\\liuxb.pfx",
-  "pfx_password": null,
-  "username": "liuxb",
-  "password": "oa@123456",
-  "cookie": "自动保存的session",
-  "page_size": 50,
-  "output_dir": ""
-}
+```bash
+python gui.py
 ```
 
-部署到服务器时，修改此文件中的 `base_url`、`pfx_path` 即可。
+浏览器自动打开 `http://localhost:5050`，支持：
+- 多选项目类型，一键爬取
+- 实时日志输出
+- 文件下载管理
+- 在线修改连接配置
+
+### Windows 双击启动
+
+直接双击 `start.bat`。
 
 ## 定时任务
 
 ### Windows 任务计划程序（每周一 9:00）
 
 ```
-schtasks /create /tn "DengbaoScraper" /tr "python E:\path\to\scraper.py" /sc weekly /d MON /st 09:00
+schtasks /create /tn "DengbaoScraper" /tr "python E:\path\to\scraper.py --type all" /sc weekly /d MON /st 09:00
 ```
 
 ### Linux Crontab（每周一 9:00）
 
 ```cron
-0 9 * * 1 cd /path/to/dengbao-scraper && python3 scraper.py >> scraper.log 2>&1
+0 9 * * 1 cd /path/to/dengbao-scraper && python3 scraper.py --type all >> scraper.log 2>&1
 ```
 
 ## 导出字段
