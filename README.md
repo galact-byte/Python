@@ -11,8 +11,7 @@
 ├── AI/                # AI 相关工具（打标、音频、对话等）
 ├── Excel/             # Excel 处理工具
 ├── ai-assistant/      # RAG 知识库 AI 助手
-├── bat/               # 批处理脚本集合
-├── dengbao-scraper/   # 等保测评数据爬虫
+├── bat/               # 批处理脚本与工具集合（含等保数据爬虫）
 └── files/             # Pixiv 图片下载与处理工具
 ```
 
@@ -96,27 +95,13 @@ Pixiv 图片批量下载与处理：
 
 ---
 
-## 🕷️ 等保数据爬虫 (dengbao-scraper/)
+## 📜 批处理脚本与工具 (bat/)
 
-从项目管理系统自动爬取等保测评项目数据，导出为 Excel 文件：
-
-- 🔐 自动登录（OCR 验证码识别，无需手动操作）
-- 📄 全量分页爬取，自动遍历所有页
-- 📊 导出格式化 Excel（24 列字段，带样式/冻结首行/自动筛选）
-- ⏰ 支持定时任务和手动执行两种模式
-- 🍪 Cookie 自动管理（过期自动重新登录）
-- 🖥️ 提供 GUI 界面
-
-详细说明请参阅 [dengbao-scraper/README.md](./dengbao-scraper/README.md)
-
----
-
-## 📜 批处理脚本 (bat/)
-
-包含多种实用自动化脚本，按功能分类：
+包含多种实用自动化脚本和工具，按功能分类：
 
 | 类别 | 说明 |
 |------|------|
+| **🕷️ 等保数据爬虫** | 项目进度数据爬虫，自动登录（OCR 验证码）、全量分页爬取、导出 Excel，支持 7 种项目类型，提供 CLI 和 Web GUI |
 | **🔐 安全测试** | 若依框架扫描器、SQLMap 凭证查找、弱口令字典生成 |
 | **🎮 游戏本地化** | 汉化工具 GUI、图层管理器、Fanbox 抓取、翻译合并 |
 | **📄 文档处理** | 等保完结单处理、项目归档打包、文档自动生成 |
@@ -148,11 +133,11 @@ pip install python-docx pandas openpyxl colorama
 # AI 助手依赖
 pip install openai python-dotenv
 
-# 等保爬虫依赖
-pip install requests cryptography openpyxl ddddocr
-
 # Pixiv 工具依赖
 pip install requests
+
+# 等保爬虫依赖（bat/dengbao-scraper）
+pip install requests cryptography openpyxl ddddocr
 ```
 
 ---
@@ -172,7 +157,7 @@ python Excel/Script.py
 python ai-assistant/main.py
 
 # 运行等保数据爬虫
-python dengbao-scraper/scraper.py
+python bat/dengbao-scraper/scraper.py
 
 ```
 
