@@ -3,12 +3,32 @@
 import os
 import shutil
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Inches, RGBColor
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 from models.project_data import ProjectData, ReportInfo
 from core.format_style import (
     set_cell_text, FONT_FANG_GB, SIZE_TABLE, _set_east_asia_font
 )
+
+
+# ══════════════════════════════════════════════════════
+#  底层工具函数
+# ══════════════════════════════════════════════════════
+
+def _highlight_run(run, color="yellow"):
+    """给 run 添加高亮色"""
+    rpr = run._element.get_or_add_rPr()
+    highlight = OxmlElement('w:highlight')
+    highlight.set(qn('w:val'), color)
+    rpr.append(highlight)
+
+
+def _highlight_cell(cell, color="yellow"):
+    """给单元格中所有 run 添加高亮"""
+    for para in cell.paragraphs:
+        for run in para.runs:
+            _highlight_run(run, color)
 
 
 # ══════════════════════════════════════════════════════
@@ -131,8 +151,10 @@ def _safe_set_value(table, row, col, text):
 #  备案表生成
 # ══════════════════════════════════════════════════════
 
-def generate_beian(template_path: str, output_path: str, data: ProjectData):
+def generate_beian(template_path: str, output_path: str, data: ProjectData, highlighted_fields=None):
     """基于新备案表模版生成填充后的备案表（精准填充）"""
+    if highlighted_fields is None:
+        highlighted_fields = []
     shutil.copy2(template_path, output_path)
     doc = Document(output_path)
 
@@ -151,10 +173,22 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData):
         for p in doc.paragraphs:
             full = p.text
             if '备' in full and '案' in full and '单' in full and '位' in full and '盖章' in full and '受理' not in full:
+                # 找到"备案单位"标签 run，复制其格式
+                label_run = None
+                for run in p.runs:
+                    if '备' in run.text or '案' in run.text or '单' in run.text or '位' in run.text:
+                        label_run = run
+                        break
                 for run in p.runs:
                     if run.text.strip() == '' and len(run.text) >= 3:
-                        # 找到（盖章）前面的空格 run
                         run.text = unit_name
+                        # 复制标签 run 的字体格式
+                        if label_run:
+                            run.font.name = label_run.font.name
+                            run.font.size = label_run.font.size
+                            run.font.bold = label_run.font.bold
+                            if label_run.font.name:
+                                _set_east_asia_font(run, label_run.font.name)
                         break
                 break
 
@@ -307,10 +341,15 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData):
     # ══════ 表4: 定级等级 (index 3, 5列) ══════
     t4 = doc.tables[3]
 
-    # 安全保护等级（勾选）
+    # 安全保护等级（勾选）— 需要分别勾选业务信息等级、系统服务等级、最终等级
+    # 表4 row11 包含三个等级的勾选区域
     level_cell = t4.rows[11].cells[2]
+    if g.biz_level:
+        _find_and_check(level_cell, g.biz_level, multi=True)
+    if g.service_level:
+        _find_and_check(level_cell, g.service_level, multi=True)
     if g.final_level:
-        _find_and_check(level_cell, g.final_level)
+        _find_and_check(level_cell, g.final_level, multi=True)
 
     # 定级时间
     _safe_set_value(t4, 12, 2, g.grading_date)
@@ -337,6 +376,13 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData):
     supervisor_cell = t4.rows[15].cells[2]
     if g.has_supervisor:
         _find_and_check(supervisor_cell, '有')
+        # 上级主管部门审核情况：有主管部门但未审核时勾选"未审核"
+        if len(t4.rows) > 17:
+            audit_cell = t4.rows[17].cells[2]
+            if g.supervisor_reviewed:
+                _find_and_check(audit_cell, '已审核')
+            else:
+                _find_and_check(audit_cell, '未审核')
     else:
         _find_and_check(supervisor_cell, '无')
 
@@ -389,6 +435,34 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData):
             _fill_underline_field(t7.rows[4].cells[1], d.total_size)
         if d.monthly_growth:
             _fill_underline_field(t7.rows[5].cells[1], d.monthly_growth)
+
+    # ══════ 标黄处理 — 对用户标记的字段在文档中高亮 ══════
+    if highlighted_fields:
+        # UI field id → (table_index, row, col) 映射
+        field_cell_map = {
+            'unit_name': (1, 0, 1), 'credit_code': (1, 1, 1),
+            'postal_code': (1, 3, 1), 'admin_code': (1, 3, 6),
+            'leader_name': (1, 4, 2), 'leader_title': (1, 4, 6),
+            'leader_phone': (1, 5, 2), 'leader_email': (1, 5, 6),
+            'sec_dept': (1, 6, 1), 'sec_name': (1, 7, 2), 'sec_title': (1, 7, 6),
+            'sec_phone': (1, 8, 2), 'sec_email': (1, 8, 6), 'sec_mobile': (1, 9, 2),
+            'data_dept': (1, 10, 1), 'data_name': (1, 11, 2), 'data_title': (1, 11, 6),
+            'data_phone': (1, 12, 2), 'data_email': (1, 12, 6), 'data_mobile': (1, 13, 2),
+            'target_name': (2, 0, 2), 'biz_desc': (2, 3, 2),
+            'run_date': (2, 9, 2), 'parent_sys': (2, 11, 2), 'parent_unit': (2, 12, 2),
+            'grading_date': (3, 12, 2), 'report_name': (3, 13, 2), 'review_name': (3, 14, 2),
+            'data_name_field': (6, 0, 1), 'data_category': (6, 1, 1),
+            'data_sec_dept': (6, 2, 1), 'data_sec_person': (6, 2, 3),
+            'total_size': (6, 4, 1), 'monthly_growth': (6, 5, 1),
+        }
+        for field_id in highlighted_fields:
+            if field_id in field_cell_map:
+                ti, ri, ci = field_cell_map[field_id]
+                try:
+                    cell = doc.tables[ti].rows[ri].cells[ci]
+                    _highlight_cell(cell)
+                except (IndexError, AttributeError):
+                    pass
 
     doc.save(output_path)
     return output_path
@@ -459,23 +533,37 @@ def _fill_underline_field(cell, value):
 # ══════════════════════════════════════════════════════
 
 def generate_report(template_path: str, output_path: str,
-                    report: ReportInfo, project_name: str):
+                    report: ReportInfo, project_name: str, highlighted_fields=None):
     """基于新定级报告模版生成填充后的定级报告"""
+    if highlighted_fields is None:
+        highlighted_fields = []
     shutil.copy2(template_path, output_path)
     doc = Document(output_path)
 
-    for p in doc.paragraphs:
+    # ── 第一遍：替换文本、删除说明 ──
+    paragraphs_to_remove = []
+    for i, p in enumerate(doc.paragraphs):
         text = p.text.strip()
+        if not text:
+            continue
 
-        # 替换标题（XX可能在单独run）
+        # 替换标题（XX → 项目名），保持格式一致
         if "XX" in text and "定级报告" in text:
             for run in p.runs:
                 if "XX" in run.text:
                     run.text = run.text.replace("XX", project_name)
 
-        # 清除填写说明
-        if "【填写说明" in text or "【描述参考示例】" in text or "【网络边界描述示例】" in text:
-            _replace_paragraph_text(p, "")
+        # 清除所有填写说明（【...】标记的内容）
+        if text.startswith("【") or "【填写说明" in text or "【描述参考示例】" in text or "【网络边界描述示例】" in text:
+            paragraphs_to_remove.append(p)
+            continue
+        # 清除以"说明："开头的提示段落
+        if text.startswith("说明："):
+            paragraphs_to_remove.append(p)
+            continue
+        # 清除模板中残留的"该定级对象是否采用了新技术"等说明
+        if "该定级对象是否采用了新技术" in text:
+            paragraphs_to_remove.append(p)
             continue
 
         # 替换参考示例内容
@@ -488,9 +576,28 @@ def generate_report(template_path: str, output_path: str,
         elif "按照网络安全法" in text and report.security_resp:
             _replace_paragraph_text(p, report.security_resp)
 
+        # 填充业务信息描述/侵害客体/侵害程度
+        if "业务信息描述的内容" in text and report.biz_info_desc:
+            _replace_paragraph_text(p, report.biz_info_desc)
+        elif "对客体的侵害" in text and "业务信息" in text and report.biz_victim:
+            _replace_paragraph_text(p, report.biz_victim)
+        elif "侵害程度的描述" in text and "业务信息" in text and report.biz_degree:
+            _replace_paragraph_text(p, report.biz_degree)
+
+        # 填充系统服务描述/侵害客体/侵害程度
+        if "系统服务描述的内容" in text and report.svc_desc:
+            _replace_paragraph_text(p, report.svc_desc)
+        elif "对客体的侵害" in text and "系统服务" in text and report.svc_victim:
+            _replace_paragraph_text(p, report.svc_victim)
+        elif "侵害程度的描述" in text and "系统服务" in text and report.svc_degree:
+            _replace_paragraph_text(p, report.svc_degree)
+
         # 替换子系统表描述
         if "该定级对象包括以下子系统" in text:
-            _replace_paragraph_text(p, "该定级对象包括以下子系统：")
+            if not report.subsystems:
+                paragraphs_to_remove.append(p)
+            else:
+                _replace_paragraph_text(p, "该定级对象包括以下子系统：")
 
         # 替换等级占位
         if "第X级" in text:
@@ -511,14 +618,23 @@ def generate_report(template_path: str, output_path: str,
         if "XXX" in text and "第X级" not in text:
             _replace_paragraph_text(p, text.replace("XXX", project_name))
 
-    # 插入网络拓扑图
+    # 删除标记的段落
+    for p in paragraphs_to_remove:
+        parent = p._element.getparent()
+        if parent is not None:
+            parent.remove(p._element)
+
+    # ── 清除多余空行（连续2个以上空段落压缩为1个） ──
+    _remove_consecutive_blanks(doc)
+
+    # ── 插入网络拓扑图（放在"定级对象构成"描述文字之后） ──
     if report.topology_image and os.path.exists(report.topology_image):
         _insert_topology_image(doc, report.topology_image)
 
-    # 填充子系统表格
-    if report.subsystems:
-        for table in doc.tables:
-            if _cell_text_safe(table, 0, 0) == "序号":
+    # ── 子系统表格处理 ──
+    for table in doc.tables:
+        if _cell_text_safe(table, 0, 0) == "序号":
+            if report.subsystems:
                 while len(table.rows) > 1:
                     table._tbl.remove(table.rows[-1]._tr)
                 for sub in report.subsystems:
@@ -526,9 +642,15 @@ def generate_report(template_path: str, output_path: str,
                     set_cell_text(row.cells[0], sub.index)
                     set_cell_text(row.cells[1], sub.name)
                     set_cell_text(row.cells[2], sub.description)
-                break
+            else:
+                # 无子系统时删除表格
+                table._tbl.getparent().remove(table._tbl)
+            break
 
-    # 填充最终等级汇总表
+    # ── 矩阵表涂色（业务信息 & 系统服务安全保护等级矩阵表） ──
+    _shade_matrix_tables(doc, report)
+
+    # ── 最终等级汇总表 ──
     for table in doc.tables:
         if _cell_text_safe(table, 0, 0) == "定级对象名称":
             if len(table.rows) > 1:
@@ -540,6 +662,90 @@ def generate_report(template_path: str, output_path: str,
 
     doc.save(output_path)
     return output_path
+
+
+def _remove_consecutive_blanks(doc):
+    """压缩连续空段落，最多保留1个"""
+    prev_blank = False
+    to_remove = []
+    for p in doc.paragraphs:
+        is_blank = not p.text.strip()
+        if is_blank and prev_blank:
+            to_remove.append(p)
+        prev_blank = is_blank
+    for p in to_remove:
+        parent = p._element.getparent()
+        if parent is not None:
+            parent.remove(p._element)
+
+
+def _shade_matrix_tables(doc, report):
+    """
+    对业务信息和系统服务安全保护等级矩阵表进行涂色。
+    根据等级在对应行列交叉处涂黑（深色背景+白色文字）。
+    """
+    level_map = {"第一级": 1, "第二级": 2, "第三级": 3, "第四级": 4, "第五级": 5}
+
+    for table in doc.tables:
+        header = _cell_text_safe(table, 0, 0)
+        # 业务信息安全保护等级矩阵表
+        if "受到破坏时所侵害的客体" in header or "客体" in header:
+            level_val = 0
+            # 判断是业务信息还是系统服务矩阵表
+            # 通过查找前面段落的上下文来判断
+            table_xml = table._tbl
+            prev = table_xml.getprevious()
+            is_biz = True
+            while prev is not None:
+                prev_text = prev.text if hasattr(prev, 'text') else ''
+                if '系统服务' in prev_text:
+                    is_biz = False
+                    break
+                if '业务信息' in prev_text:
+                    is_biz = True
+                    break
+                prev = prev.getprevious()
+
+            if is_biz:
+                level_val = level_map.get(report.biz_level, 2)
+            else:
+                level_val = level_map.get(report.svc_level, 2)
+
+            _shade_level_in_matrix(table, level_val)
+
+
+def _shade_level_in_matrix(table, level):
+    """
+    在矩阵表中对应等级的单元格涂黑。
+    矩阵表结构：第0行是表头，第1-3行是"公民/法人/其他"或类似客体行，
+    列代表侵害程度（一般/严重/特别严重），交叉处是等级。
+    找到文本为"第X级"（对应level）的单元格涂黑。
+    """
+    level_text = {1: "第一级", 2: "第二级", 3: "第三级", 4: "第四级", 5: "第五级"}
+    target = level_text.get(level, "")
+    if not target:
+        return
+
+    for row in table.rows:
+        for cell in row.cells:
+            text = cell.text.strip()
+            if text == target:
+                _shade_cell_black(cell)
+
+
+def _shade_cell_black(cell):
+    """给单元格设置黑色背景、白色文字"""
+    # 设置单元格底纹
+    tc_pr = cell._element.get_or_add_tcPr()
+    shading = OxmlElement('w:shd')
+    shading.set(qn('w:val'), 'clear')
+    shading.set(qn('w:color'), 'auto')
+    shading.set(qn('w:fill'), '000000')
+    tc_pr.append(shading)
+    # 设置文字为白色
+    for para in cell.paragraphs:
+        for run in para.runs:
+            run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
 
 
 def _replace_paragraph_text(paragraph, new_text):
@@ -560,14 +766,29 @@ def _cell_text_safe(table, row, col):
 
 
 def _insert_topology_image(doc, image_path):
-    """在定级对象构成章节后插入拓扑图"""
+    """在定级对象构成章节的描述文字之后插入拓扑图"""
+    found_section = False
     for i, p in enumerate(doc.paragraphs):
         text = p.text.strip()
-        if "网络拓扑图" in text or ("定级对象构成" in text and "（二）" in text):
-            for j in range(i + 1, min(i + 5, len(doc.paragraphs))):
-                next_p = doc.paragraphs[j]
-                if not next_p.text.strip() or "【" in next_p.text:
-                    run = next_p.add_run()
+        if ("定级对象构成" in text and "（二）" in text) or "网络拓扑图" in text:
+            found_section = True
+            continue
+        if found_section:
+            # 跳过描述性文字段落，找到第一个空段落或下一个标题之前的位置
+            if not text or text.startswith("（三）") or text.startswith("（四）"):
+                # 在当前位置之前（描述段落之后）插入图片
+                # 使用上一个非空段落之后的位置
+                target_p = doc.paragraphs[i]
+                if not text:
+                    # 空段落，直接在此处插入图片
+                    run = target_p.add_run()
                     run.add_picture(image_path, width=Inches(5.5))
-                    return
-            break
+                else:
+                    # 到了下一个标题，在前面插入新段落
+                    new_p = OxmlElement('w:p')
+                    p._element.addprevious(new_p)
+                    from docx.text.paragraph import Paragraph
+                    para = Paragraph(new_p, p._element.getparent())
+                    run = para.add_run()
+                    run.add_picture(image_path, width=Inches(5.5))
+                return

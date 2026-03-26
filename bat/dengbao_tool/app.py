@@ -132,6 +132,7 @@ def generate():
         data = _dict_to_project_data(form_data)
         report = _dict_to_report(report_data)
         name = paths["project_name"]
+        highlighted = form_data.get("highlighted_fields", [])
 
         from core.doc_writer import generate_beian, generate_report
 
@@ -139,10 +140,10 @@ def generate():
         os.makedirs(out_dir, exist_ok=True)
 
         beian_out = os.path.join(out_dir, f"备案表_{name}.docx")
-        generate_beian(paths["beian_template"], beian_out, data)
+        generate_beian(paths["beian_template"], beian_out, data, highlighted_fields=highlighted)
 
         report_out = os.path.join(out_dir, f"定级报告_{name}.docx")
-        generate_report(paths["report_template"], report_out, report, name)
+        generate_report(paths["report_template"], report_out, report, name, highlighted_fields=highlighted)
 
         return jsonify({
             "success": True,
@@ -166,6 +167,7 @@ def preview():
         data = _dict_to_project_data(form_data)
         report = _dict_to_report(report_data)
         name = paths["project_name"]
+        highlighted = form_data.get("highlighted_fields", [])
 
         from core.doc_writer import generate_beian, generate_report
 
@@ -174,10 +176,10 @@ def preview():
 
         if doc_type == "beian":
             out = os.path.join(temp_dir, f"预览_备案表_{name}.docx")
-            generate_beian(paths["beian_template"], out, data)
+            generate_beian(paths["beian_template"], out, data, highlighted_fields=highlighted)
         else:
             out = os.path.join(temp_dir, f"预览_定级报告_{name}.docx")
-            generate_report(paths["report_template"], out, report, name)
+            generate_report(paths["report_template"], out, report, name, highlighted_fields=highlighted)
 
         os.startfile(out)
         return jsonify({"success": True, "path": out})
