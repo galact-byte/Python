@@ -4,12 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>等保文档迁移工具</title>
-<link rel="stylesheet" href="/static/style.css?v=21">
+<link rel="stylesheet" href="/static/style.css?v=24">
 </head>
 <body>
 
 <div class="container">
-  <div class="header"><h1>等保文档迁移工具 v2.0</h1></div>
+  <div class="header">
+    <div class="header-top">
+      <h1>等保文档迁移工具 v2.5</h1>
+      <button type="button" id="theme_toggle" class="theme-toggle" onclick="toggleTheme()">切换浅色</button>
+    </div>
+  </div>
 
   <!-- 步骤指示器 -->
   <div class="steps">
@@ -29,6 +34,37 @@
         <label>项目目录：</label>
         <input type="text" id="project_dir" placeholder="粘贴旧项目文件夹路径，或点右侧按钮选择">
         <button class="btn-sm" onclick="browseDir('project_dir')">选择</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-title">批量入口</div>
+      <p class="hint">默认用总目录自动识别多个项目和系统；Excel 清单作为辅助入口，优先用于项目/系统名称对齐。</p>
+      <div class="form-row">
+        <label>总目录：</label>
+        <input type="text" id="batch_root_dir" placeholder="选择包含多个项目子目录的总目录">
+        <button class="btn-sm" onclick="browseDir('batch_root_dir')">选择</button>
+        <button class="btn-sm btn-primary" onclick="scanBatchRoot()">扫描总目录</button>
+      </div>
+      <div class="form-row">
+        <label>Excel 清单：</label>
+        <input type="text" id="manifest_file" placeholder="可选：导入等保项目清单 .xlsx">
+        <button class="btn-sm" onclick="browseFile('manifest_file','excel')">选择</button>
+        <button class="btn-sm" onclick="importBatchManifest()">导入清单</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-title">批量概览</div>
+      <div class="batch-scan-layout">
+        <div class="batch-project-panel">
+          <div id="batch-project-list" class="batch-project-list">
+            <p class="hint">尚未扫描总目录</p>
+          </div>
+        </div>
+        <div class="batch-project-detail">
+          <div id="batch-project-summary" class="batch-project-summary">扫描后会在这里显示项目、系统数量和待更新状态。</div>
+        </div>
       </div>
     </div>
 
@@ -92,6 +128,21 @@
       <label for="highlight_mode" style="color:#ffd700;">标黄模式</label>
       <span>— 开启后点击任意输入框可标黄/取消，标黄的字段生成文档时会高亮显示，提示客户填写</span>
     </div>
+    <div class="batch-toolbar">
+      <div class="batch-toolbar-main">
+        <span class="batch-chip">当前项目：<strong id="current_project_label">未选择</strong></span>
+        <span class="batch-chip">当前系统：<strong id="current_system_label">未选择</strong></span>
+      </div>
+      <div class="batch-toolbar-actions">
+        <select id="system_selector" onchange="switchCurrentSystem(this.value)">
+          <option value="">当前仅单系统模式</option>
+        </select>
+        <button class="btn-sm" onclick="saveCurrentSystem()">保存当前系统</button>
+        <button class="btn-sm" onclick="reloadCurrentSystem()">重新读取旧文档</button>
+        <button class="btn-sm" onclick="addManualSystem()">新增系统</button>
+      </div>
+    </div>
+    <div id="system-status"></div>
     <div class="editor-layout">
       <div class="editor-main">
         <!-- Tab 栏 -->
@@ -410,6 +461,15 @@
       </div>
       <div id="gen-result"></div>
     </div>
+    <div class="form-group">
+      <div class="form-group-title">批量执行</div>
+      <p class="hint">会读取每个项目目录下的状态文件，自动跳过已更新系统；如果旧文档或当前草稿发生变化，会重新生成。</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:16px 0;">
+        <button onclick="saveCurrentSystem()">保存当前系统</button>
+        <button class="btn-primary" onclick="generateBatchDocs()">批量生成待更新项</button>
+      </div>
+      <div id="batch-result"></div>
+    </div>
   </div>
 
   <!-- 导航 -->
@@ -423,6 +483,7 @@
 // ── 全局状态 ──
 let currentStep = 0;
 const changeLog = [];
+window.__DEV_MODE__ = {{ 'true' if dev_mode else 'false' }};
 
 // ── 系统文件/文件夹选择 ──
 async function browseDir(targetId) {
@@ -436,9 +497,9 @@ async function browseDir(targetId) {
     }
   } catch(e) { console.log('browse error:', e); }
 }
-async function browseFile(targetId) {
+async function browseFile(targetId, types='doc') {
   try {
-    const res = await fetch('/api/browse_file', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({types:'doc'})});
+    const res = await fetch('/api/browse_file', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({types})});
     const data = await res.json();
     if (data.path) document.getElementById(targetId).value = data.path;
   } catch(e) { console.log('browse error:', e); }
@@ -684,9 +745,49 @@ function fillBeianData(d) {
   setField('review_name', g.review_name);
   setField('filler', g.filler);
   setField('fill_date', g.fill_date);
+  document.getElementById('has_report').checked = !!g.has_report;
+  document.getElementById('has_review').checked = !!g.has_review;
+  document.getElementById('has_supervisor').checked = !!g.has_supervisor;
+  document.getElementById('supervisor_reviewed').checked = !!g.supervisor_reviewed;
+  setField('supervisor_name', g.supervisor_name);
+  onSupervisorChange();
   if (g.biz_level) { document.getElementById('biz_level').value = g.biz_level; }
   if (g.service_level) { document.getElementById('svc_level').value = g.service_level; }
   updateFinalLevel();
+
+  const s = d.scenario || {};
+  const cloud = s.cloud || {};
+  document.getElementById('cloud_enabled').checked = !!cloud.enabled;
+  setField('cloud_role', cloud.role);
+  setField('cloud_service', cloud.service_model);
+  setField('cloud_deploy', cloud.deploy_model);
+  setField('cloud_provider', cloud.provider_name);
+  setField('cloud_plat_level', cloud.platform_level);
+  setField('cloud_plat_name', cloud.platform_name);
+  setField('cloud_plat_code', cloud.platform_code);
+  setField('cloud_ops', cloud.client_ops_location);
+
+  const mobile = s.mobile || {};
+  document.getElementById('mobile_enabled').checked = !!mobile.enabled;
+  setField('mobile_app', mobile.app_name);
+  setField('mobile_wireless', mobile.wireless);
+  setField('mobile_terminal', mobile.terminal);
+
+  const iot = s.iot || {};
+  document.getElementById('iot_enabled').checked = !!iot.enabled;
+  setField('iot_perception', iot.perception);
+  setField('iot_transport', iot.transport);
+
+  const ics = s.ics || {};
+  document.getElementById('ics_enabled').checked = !!ics.enabled;
+  setField('ics_layer', ics.function_layer);
+  setField('ics_comp', ics.composition);
+
+  const bigdata = s.bigdata || {};
+  document.getElementById('bigdata_enabled').checked = !!bigdata.enabled;
+  setField('bigdata_comp', bigdata.composition);
+  setField('bigdata_cross', bigdata.cross_border);
+  ['cloud', 'mobile', 'iot', 'ics', 'bigdata'].forEach(toggleSection);
 
   const dd = d.data || {};
   setField('data_name_field', dd.data_name);
@@ -977,6 +1078,40 @@ function collectFormData() {
       filler: document.getElementById('filler').value,
       fill_date: document.getElementById('fill_date').value,
     },
+    scenario: {
+      cloud: {
+        enabled: document.getElementById('cloud_enabled').checked,
+        role: document.getElementById('cloud_role').value,
+        service_model: document.getElementById('cloud_service').value,
+        deploy_model: document.getElementById('cloud_deploy').value,
+        provider_name: document.getElementById('cloud_provider').value,
+        platform_level: document.getElementById('cloud_plat_level').value,
+        platform_name: document.getElementById('cloud_plat_name').value,
+        platform_code: document.getElementById('cloud_plat_code').value,
+        client_ops_location: document.getElementById('cloud_ops').value,
+      },
+      mobile: {
+        enabled: document.getElementById('mobile_enabled').checked,
+        app_name: document.getElementById('mobile_app').value,
+        wireless: document.getElementById('mobile_wireless').value,
+        terminal: document.getElementById('mobile_terminal').value,
+      },
+      iot: {
+        enabled: document.getElementById('iot_enabled').checked,
+        perception: document.getElementById('iot_perception').value,
+        transport: document.getElementById('iot_transport').value,
+      },
+      ics: {
+        enabled: document.getElementById('ics_enabled').checked,
+        function_layer: document.getElementById('ics_layer').value,
+        composition: document.getElementById('ics_comp').value,
+      },
+      bigdata: {
+        enabled: document.getElementById('bigdata_enabled').checked,
+        composition: document.getElementById('bigdata_comp').value,
+        cross_border: document.getElementById('bigdata_cross').value,
+      },
+    },
     attachment: {
       topology: { has_file: document.getElementById('att_topology').checked, file_name: document.getElementById('att_topology_name').value },
       org_policy: { has_file: document.getElementById('att_org').checked, file_name: document.getElementById('att_org_name').value },
@@ -1086,6 +1221,38 @@ function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
 }
 </script>
+<script src="/static/batch.js?v=1"></script>
+{% if dev_mode %}
+<script>
+(() => {
+  let lastSignature = null;
+  let hadFailure = false;
+
+  async function checkDevStatus() {
+    try {
+      const res = await fetch('/api/dev_status', {cache: 'no-store'});
+      const data = await res.json();
+      if (!data.dev_mode) return;
+      if (lastSignature === null) {
+        lastSignature = data.signature;
+      } else if (lastSignature !== data.signature) {
+        location.reload();
+        return;
+      } else if (hadFailure) {
+        location.reload();
+        return;
+      }
+      hadFailure = false;
+    } catch (err) {
+      hadFailure = true;
+    }
+  }
+
+  setInterval(checkDevStatus, 1200);
+  checkDevStatus();
+})();
+</script>
+{% endif %}
 
 <!-- 居中弹窗 -->
 <div id="modal-overlay" class="modal-overlay" onclick="if(event.target===this)closeModal()">

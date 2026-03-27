@@ -2,9 +2,9 @@
 
 import subprocess
 import sys
-import threading
 import webbrowser
 import time
+import os
 
 
 def run(cmd: str) -> subprocess.CompletedProcess:
@@ -41,18 +41,21 @@ def check_dependencies():
                 sys.exit(1)
 
 
-def start_app():
-    import os
+def start_app(dev_mode: bool = False):
     app_path = os.path.join(os.path.dirname(__file__), "app.py")
+    env = os.environ.copy()
+    env["DENGBAO_DEV_MODE"] = "1" if dev_mode else "0"
 
     print("\n启动中...")
     print("=" * 40)
+    print(f"  模式: {'开发模式（自动重载）' if dev_mode else '稳定模式'}")
 
     # 用 subprocess 启动 Flask（不替换当前进程）
     proc = subprocess.Popen(
         [sys.executable, app_path],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stdout=None if dev_mode else subprocess.PIPE,
+        stderr=None if dev_mode else subprocess.PIPE,
+        env=env,
     )
 
     # 等 Flask 就绪后打开浏览器
@@ -78,12 +81,13 @@ def start_app():
 
 
 def main():
+    dev_mode = "--dev" in sys.argv
     print("=" * 40)
-    print("  等保文档迁移工具 v2.1")
+    print(f"  等保文档迁移工具 {'开发模式' if dev_mode else '稳定模式'}")
     print("=" * 40)
     check_python()
     check_dependencies()
-    start_app()
+    start_app(dev_mode=dev_mode)
 
 
 if __name__ == "__main__":
