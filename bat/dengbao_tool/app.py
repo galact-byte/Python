@@ -5,15 +5,27 @@ import sys
 import json
 import glob
 import tempfile
+import hashlib
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 from flask import Flask, render_template, request, jsonify
 from models.project_data import ProjectData, ReportInfo
+from core.batch_manager import (
+    get_system_entry,
+    import_manifest as load_manifest_data,
+    load_project_state,
+    mark_generated,
+    save_project_state,
+    scan_batch_root as scan_batch_root_dirs,
+    scan_project,
+    upsert_system_entry,
+)
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # 禁用静态文件缓存
+DEV_MODE = os.environ.get("DENGBAO_DEV_MODE") == "1"
 
 # Word 模版目录
 DOC_TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "doc_templates")
@@ -26,7 +38,8 @@ def index():
     report_tpl = _find_file(DOC_TEMPLATE_DIR, "*定级报告*.docx")
     return render_template("index.html",
                            beian_template=beian_tpl or "",
-                           report_template=report_tpl or "")
+                           report_template=report_tpl or "",
+                           dev_mode=DEV_MODE)
 
 
 @app.route("/api/scan_dir", methods=["POST"])
@@ -69,55 +82,154 @@ def scan_dir():
     })
 
 
+@app.route("/api/scan_batch_root", methods=["POST"])
+def scan_batch_root():
+    """扫描总目录下的多个项目。"""
+    root_dir = request.json.get("root_dir", "")
+    if not root_dir or not os.path.isdir(root_dir):
+        return jsonify({"success": False, "message": "总目录不存在"}), 400
+
+    return jsonify({
+        "success": True,
+        "root_dir": root_dir,
+        "projects": scan_batch_root_dirs(root_dir),
+    })
+
+
 @app.route("/api/load_data", methods=["POST"])
 def load_data():
     """从旧文件加载数据"""
     old_beian = request.json.get("old_beian", "")
     old_report = request.json.get("old_report", "")
+    return jsonify(_load_source_payload(old_beian, old_report))
 
-    result = {"beian_data": None, "report_data": None, "changes": [], "errors": []}
 
-    if old_beian and os.path.exists(old_beian):
-        try:
-            # .doc → .docx 转换
-            if old_beian.lower().endswith('.doc'):
-                from core.doc_converter import convert_doc_to_docx
-                converted = convert_doc_to_docx(old_beian)
-                if converted:
-                    old_beian = converted
-                else:
-                    result["errors"].append(
-                        f"备案表 .doc 转换失败，请手动用 Word 另存为 .docx\n文件: {old_beian}")
-                    old_beian = ""
+@app.route("/api/load_system", methods=["POST"])
+def load_system():
+    """加载批量项目中的单个系统。"""
+    project_dir = request.json.get("project_dir", "")
+    system_id = request.json.get("system_id", "")
+    force_reload = bool(request.json.get("force_reload", False))
+    if not project_dir or not os.path.isdir(project_dir):
+        return jsonify({"success": False, "message": "项目目录不存在"}), 400
+    if not system_id:
+        return jsonify({"success": False, "message": "缺少 system_id"}), 400
 
-            if old_beian:
-                from core.doc_reader import read_beian_docx
-                data = read_beian_docx(old_beian)
-                result["beian_data"] = _dataclass_to_dict(data)
-                result["changes"].append(f"从备案表加载了单位信息、定级对象等数据")
-        except Exception as e:
-            result["errors"].append(f"读取备案表失败: {e}")
+    project = scan_project(project_dir)
+    system = next((item for item in project["systems"] if item["system_id"] == system_id), None)
+    if not system:
+        return jsonify({"success": False, "message": "未找到系统"}), 404
 
-    if old_report and os.path.exists(old_report):
-        try:
-            if old_report.lower().endswith('.doc'):
-                from core.doc_converter import convert_doc_to_docx
-                converted = convert_doc_to_docx(old_report)
-                if converted:
-                    old_report = converted
-                else:
-                    result["errors"].append("定级报告 .doc 转换失败")
-                    old_report = ""
+    state, entry = get_system_entry(project_dir, system_id)
+    if not force_reload and entry.get("form_data") and entry.get("report_data"):
+        return jsonify({
+            "success": True,
+            "project": project,
+            "system": system,
+            "form_data": entry.get("form_data"),
+            "report_data": entry.get("report_data"),
+            "ui_state": entry.get("ui_state", {}),
+            "changes": [],
+            "errors": [],
+            "from_state": True,
+        })
 
-            if old_report:
-                from core.doc_reader import read_report_docx
-                report = read_report_docx(old_report)
-                result["report_data"] = _dataclass_to_dict(report)
-                result["changes"].append(f"从定级报告加载了责任主体、等级等数据")
-        except Exception as e:
-            result["errors"].append(f"读取定级报告失败: {e}")
+    loaded = _load_source_payload(system.get("old_beian", ""), system.get("old_report", ""))
+    form_data = loaded["beian_data"] or _new_project_data_dict()
+    report_data = loaded["report_data"] or _new_report_dict()
+    form_data["project_name"] = project["project_name"]
+    form_data.setdefault("target", {})
+    if not form_data["target"].get("name"):
+        form_data["target"]["name"] = system["system_name"]
+    report_data["system_name"] = system["system_name"]
 
-    return jsonify(result)
+    upsert_system_entry(
+        state,
+        project_dir,
+        system,
+        project_name=project["project_name"],
+        output_dir=system.get("output_dir") or project.get("output_dir") or project_dir,
+        form_data=form_data,
+        report_data=report_data,
+    )
+    save_project_state(project_dir, state)
+
+    return jsonify({
+        "success": True,
+        "project": project,
+        "system": system,
+        "form_data": form_data,
+        "report_data": report_data,
+        "ui_state": entry.get("ui_state", {}),
+        "changes": loaded["changes"],
+        "errors": loaded["errors"],
+        "from_state": False,
+    })
+
+
+@app.route("/api/save_system", methods=["POST"])
+def save_system():
+    """保存当前系统编辑状态。"""
+    payload = request.json
+    project_dir = payload.get("project_dir", "")
+    system_id = payload.get("system_id", "")
+    if not project_dir or not os.path.isdir(project_dir):
+        return jsonify({"success": False, "message": "项目目录不存在"}), 400
+    if not system_id:
+        return jsonify({"success": False, "message": "缺少 system_id"}), 400
+
+    form_data = payload.get("form_data") or _new_project_data_dict()
+    report_data = payload.get("report_data") or _new_report_dict()
+    ui_state = payload.get("ui_state") or {}
+    project_name = payload.get("project_name") or form_data.get("project_name", "")
+    system_meta = payload.get("system_meta") or {}
+    system_meta["system_id"] = system_id
+    system_meta.setdefault("system_name", form_data.get("target", {}).get("name", ""))
+
+    state = load_project_state(project_dir)
+    entry = upsert_system_entry(
+        state,
+        project_dir,
+        system_meta,
+        project_name=project_name,
+        output_dir=payload.get("output_dir") or system_meta.get("output_dir") or project_dir,
+        form_data=form_data,
+        report_data=report_data,
+        ui_state=ui_state,
+    )
+    save_project_state(project_dir, state)
+    return jsonify({
+        "success": True,
+        "draft_hash": entry.get("draft_hash", ""),
+        "updated_at": entry.get("updated_at", ""),
+    })
+
+
+@app.route("/api/import_manifest", methods=["POST"])
+def import_manifest():
+    """导入 Excel 项目清单。"""
+    manifest_path = request.json.get("manifest_path", "")
+    if not manifest_path or not os.path.exists(manifest_path):
+        return jsonify({"success": False, "message": "清单文件不存在"}), 400
+
+    try:
+        data = load_manifest_data(manifest_path)
+        return jsonify({
+            "success": True,
+            "manifest_path": manifest_path,
+            **data,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": f"导入清单失败: {e}"}), 500
+
+
+@app.route("/api/dev_status", methods=["GET"])
+def dev_status():
+    """开发模式文件签名，用于浏览器自动刷新。"""
+    return jsonify({
+        "dev_mode": DEV_MODE,
+        "signature": _get_dev_watch_signature(),
+    })
 
 
 @app.route("/api/generate", methods=["POST"])
@@ -129,27 +241,35 @@ def generate():
     report_data = payload["report_data"]
 
     try:
-        data = _dict_to_project_data(form_data)
-        report = _dict_to_report(report_data)
-        name = paths["project_name"]
-        highlighted = form_data.get("highlighted_fields", [])
+        result = _generate_documents(paths, form_data, report_data)
 
-        from core.doc_writer import generate_beian, generate_report
+        project_dir = paths.get("project_dir", "")
+        system_id = paths.get("system_id", "")
+        if project_dir and system_id and os.path.isdir(project_dir):
+            system_meta = payload.get("system_meta") or {
+                "system_id": system_id,
+                "system_name": _resolve_document_name(paths, form_data, report_data),
+                "source_dir": paths.get("source_dir", project_dir),
+                "old_beian": paths.get("old_beian", ""),
+                "old_report": paths.get("old_report", ""),
+                "survey": paths.get("survey", ""),
+                "output_dir": paths.get("output_dir", project_dir),
+            }
+            state = load_project_state(project_dir)
+            upsert_system_entry(
+                state,
+                project_dir,
+                system_meta,
+                project_name=paths.get("project_name", ""),
+                output_dir=paths.get("output_dir", project_dir),
+                form_data=form_data,
+                report_data=report_data,
+                ui_state=payload.get("ui_state") or {},
+            )
+            mark_generated(state, system_id, result["files"])
+            save_project_state(project_dir, state)
 
-        out_dir = paths["output_dir"]
-        os.makedirs(out_dir, exist_ok=True)
-
-        beian_out = os.path.join(out_dir, f"备案表_{name}.docx")
-        generate_beian(paths["beian_template"], beian_out, data, highlighted_fields=highlighted)
-
-        report_out = os.path.join(out_dir, f"定级报告_{name}.docx")
-        generate_report(paths["report_template"], report_out, report, name, highlighted_fields=highlighted)
-
-        return jsonify({
-            "success": True,
-            "files": [beian_out, report_out],
-            "message": f"生成完成！\n备案表: {beian_out}\n定级报告: {report_out}"
-        })
+        return jsonify({"success": True, **result})
     except Exception as e:
         return jsonify({"success": False, "message": f"生成失败: {e}"}), 500
 
@@ -166,7 +286,7 @@ def preview():
     try:
         data = _dict_to_project_data(form_data)
         report = _dict_to_report(report_data)
-        name = paths["project_name"]
+        name = _resolve_document_name(paths, form_data, report_data)
         highlighted = form_data.get("highlighted_fields", [])
 
         from core.doc_writer import generate_beian, generate_report
@@ -185,6 +305,116 @@ def preview():
         return jsonify({"success": True, "path": out})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/generate_batch", methods=["POST"])
+def generate_batch():
+    """批量生成多个项目下的系统文档。"""
+    payload = request.json
+    root_dir = payload.get("root_dir", "")
+    paths = payload.get("paths", {})
+    selected_projects = set(payload.get("selected_projects", []))
+    selected_systems = {
+        item.get("project_dir", ""): set(item.get("system_ids", []))
+        for item in payload.get("selected_systems", [])
+    }
+    skip_updated = bool(payload.get("skip_updated", True))
+
+    if not root_dir or not os.path.isdir(root_dir):
+        return jsonify({"success": False, "message": "总目录不存在"}), 400
+
+    projects = scan_batch_root_dirs(root_dir)
+    generated_count = 0
+    skipped_count = 0
+    failed_count = 0
+    results = []
+
+    for project in projects:
+        project_dir = project["project_dir"]
+        if selected_projects and project_dir not in selected_projects:
+            continue
+
+        allow_system_ids = selected_systems.get(project_dir, set())
+        state = load_project_state(project_dir)
+        state_changed = False
+
+        for system in project["systems"]:
+            if allow_system_ids and system["system_id"] not in allow_system_ids:
+                continue
+
+            if skip_updated and not system.get("needs_update"):
+                skipped_count += 1
+                results.append({
+                    "project_name": project["project_name"],
+                    "system_name": system["system_name"],
+                    "status": "skipped",
+                    "message": "已更新，自动跳过",
+                })
+                continue
+
+            entry = state.get("systems", {}).get(system["system_id"], {})
+            form_data = entry.get("form_data")
+            report_data = entry.get("report_data")
+            if not form_data or not report_data:
+                loaded = _load_source_payload(system.get("old_beian", ""), system.get("old_report", ""))
+                form_data = loaded["beian_data"] or _new_project_data_dict()
+                report_data = loaded["report_data"] or _new_report_dict()
+                form_data["project_name"] = project["project_name"]
+                form_data.setdefault("target", {})
+                if not form_data["target"].get("name"):
+                    form_data["target"]["name"] = system["system_name"]
+                report_data["system_name"] = system["system_name"]
+
+            try:
+                result = _generate_documents(
+                    {
+                        "project_name": project["project_name"],
+                        "document_name": form_data.get("target", {}).get("name") or system["system_name"],
+                        "beian_template": paths.get("beian_template", ""),
+                        "report_template": paths.get("report_template", ""),
+                        "output_dir": system.get("output_dir") or project.get("output_dir") or project_dir,
+                    },
+                    form_data,
+                    report_data,
+                )
+                upsert_system_entry(
+                    state,
+                    project_dir,
+                    system,
+                    project_name=project["project_name"],
+                    output_dir=system.get("output_dir") or project.get("output_dir") or project_dir,
+                    form_data=form_data,
+                    report_data=report_data,
+                    ui_state=entry.get("ui_state", {}),
+                )
+                mark_generated(state, system["system_id"], result["files"])
+                state_changed = True
+                generated_count += 1
+                results.append({
+                    "project_name": project["project_name"],
+                    "system_name": system["system_name"],
+                    "status": "generated",
+                    "message": result["message"],
+                })
+            except Exception as e:
+                failed_count += 1
+                results.append({
+                    "project_name": project["project_name"],
+                    "system_name": system["system_name"],
+                    "status": "failed",
+                    "message": str(e),
+                })
+
+        if state_changed:
+            save_project_state(project_dir, state)
+
+    return jsonify({
+        "success": True,
+        "generated_count": generated_count,
+        "skipped_count": skipped_count,
+        "failed_count": failed_count,
+        "results": results,
+    })
 
 
 @app.route("/api/open_dir", methods=["POST"])
@@ -226,6 +456,8 @@ def browse_file():
         filetypes = [("Word文档", "*.docx *.doc"), ("所有文件", "*.*")]
         if file_types == "image":
             filetypes = [("图片", "*.png *.jpg *.jpeg *.bmp"), ("所有文件", "*.*")]
+        elif file_types == "excel":
+            filetypes = [("Excel表格", "*.xlsx *.xls"), ("所有文件", "*.*")]
         path = filedialog.askopenfilename(title="选择文件", filetypes=filetypes)
         root.destroy()
         return jsonify({"path": path or ""})
@@ -248,6 +480,132 @@ def load_survey():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _load_source_payload(old_beian, old_report):
+    """从旧备案表/定级报告读取结构化数据。"""
+    result = {"beian_data": None, "report_data": None, "changes": [], "errors": []}
+
+    if old_beian and os.path.exists(old_beian):
+        try:
+            if old_beian.lower().endswith('.doc'):
+                from core.doc_converter import convert_doc_to_docx
+                converted = convert_doc_to_docx(old_beian)
+                if converted:
+                    old_beian = converted
+                else:
+                    result["errors"].append(
+                        f"备案表 .doc 转换失败，请手动用 Word 另存为 .docx\n文件: {old_beian}"
+                    )
+                    old_beian = ""
+
+            if old_beian:
+                from core.doc_reader import read_beian_docx
+                data = read_beian_docx(old_beian)
+                result["beian_data"] = _dataclass_to_dict(data)
+                result["changes"].append("从备案表加载了单位信息、定级对象等数据")
+        except Exception as e:
+            result["errors"].append(f"读取备案表失败: {e}")
+
+    if old_report and os.path.exists(old_report):
+        try:
+            if old_report.lower().endswith('.doc'):
+                from core.doc_converter import convert_doc_to_docx
+                converted = convert_doc_to_docx(old_report)
+                if converted:
+                    old_report = converted
+                else:
+                    result["errors"].append("定级报告 .doc 转换失败")
+                    old_report = ""
+
+            if old_report:
+                from core.doc_reader import read_report_docx
+                report = read_report_docx(old_report)
+                result["report_data"] = _dataclass_to_dict(report)
+                result["changes"].append("从定级报告加载了责任主体、等级等数据")
+        except Exception as e:
+            result["errors"].append(f"读取定级报告失败: {e}")
+
+    return result
+
+
+def _generate_documents(paths, form_data, report_data):
+    """按当前表单生成正式文档。"""
+    data = _dict_to_project_data(form_data)
+    report = _dict_to_report(report_data)
+    name = _resolve_document_name(paths, form_data, report_data)
+    highlighted = form_data.get("highlighted_fields", [])
+
+    from core.doc_writer import generate_beian, generate_report
+
+    out_dir = paths["output_dir"]
+    os.makedirs(out_dir, exist_ok=True)
+
+    beian_out = os.path.join(out_dir, f"备案表_{name}.docx")
+    generate_beian(paths["beian_template"], beian_out, data, highlighted_fields=highlighted)
+
+    report_out = os.path.join(out_dir, f"定级报告_{name}.docx")
+    generate_report(paths["report_template"], report_out, report, name, highlighted_fields=highlighted)
+
+    return {
+        "files": [beian_out, report_out],
+        "message": f"生成完成！\n备案表: {beian_out}\n定级报告: {report_out}",
+    }
+
+
+def _resolve_document_name(paths, form_data, report_data):
+    """统一文档命名，避免同项目多系统覆盖。"""
+    return (
+        paths.get("document_name")
+        or form_data.get("target", {}).get("name", "").strip()
+        or report_data.get("system_name", "").strip()
+        or paths.get("project_name", "").strip()
+        or "未命名系统"
+    )
+
+
+def _new_project_data_dict():
+    return _dataclass_to_dict(ProjectData())
+
+
+def _new_report_dict():
+    return _dataclass_to_dict(ReportInfo())
+
+
+def _get_dev_watch_signature():
+    """计算开发模式监听文件签名。"""
+    watch_roots = [
+        os.path.join(os.path.dirname(__file__), "app.py"),
+        os.path.join(os.path.dirname(__file__), "launch.py"),
+        os.path.join(os.path.dirname(__file__), "templates"),
+        os.path.join(os.path.dirname(__file__), "static"),
+        os.path.join(os.path.dirname(__file__), "core"),
+        os.path.join(os.path.dirname(__file__), "models"),
+    ]
+    payload = []
+    for root in watch_roots:
+        if os.path.isfile(root):
+            payload.append(_file_watch_token(root))
+            continue
+        if not os.path.isdir(root):
+            continue
+        for current_root, dirs, files in os.walk(root):
+            dirs[:] = [name for name in dirs if name not in {"__pycache__", ".git", ".omc", "output"}]
+            for name in sorted(files):
+                if not name.endswith((".py", ".html", ".css", ".js")):
+                    continue
+                payload.append(_file_watch_token(os.path.join(current_root, name)))
+    raw = "|".join(item for item in payload if item)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def _file_watch_token(path):
+    try:
+        stat = os.stat(path)
+        rel_path = os.path.relpath(path, os.path.dirname(__file__)).replace("\\", "/")
+        return f"{rel_path}:{int(stat.st_mtime_ns)}:{stat.st_size}"
+    except OSError:
+        return ""
 
 
 # ── 工具函数 ──
@@ -332,6 +690,42 @@ def _dict_to_project_data(d):
         filler=g.get("filler", ""), fill_date=g.get("fill_date", ""),
     )
 
+    s = d.get("scenario", {})
+    data.scenario = ScenarioInfo(
+        cloud=CloudInfo(
+            enabled=s.get("cloud", {}).get("enabled", False),
+            role=s.get("cloud", {}).get("role", ""),
+            service_model=s.get("cloud", {}).get("service_model", ""),
+            deploy_model=s.get("cloud", {}).get("deploy_model", ""),
+            provider_name=s.get("cloud", {}).get("provider_name", ""),
+            platform_level=s.get("cloud", {}).get("platform_level", ""),
+            platform_name=s.get("cloud", {}).get("platform_name", ""),
+            platform_code=s.get("cloud", {}).get("platform_code", ""),
+            client_ops_location=s.get("cloud", {}).get("client_ops_location", ""),
+        ),
+        mobile=MobileInfo(
+            enabled=s.get("mobile", {}).get("enabled", False),
+            app_name=s.get("mobile", {}).get("app_name", ""),
+            wireless=s.get("mobile", {}).get("wireless", ""),
+            terminal=s.get("mobile", {}).get("terminal", ""),
+        ),
+        iot=IoTInfo(
+            enabled=s.get("iot", {}).get("enabled", False),
+            perception=s.get("iot", {}).get("perception", ""),
+            transport=s.get("iot", {}).get("transport", ""),
+        ),
+        ics=ICSInfo(
+            enabled=s.get("ics", {}).get("enabled", False),
+            function_layer=s.get("ics", {}).get("function_layer", ""),
+            composition=s.get("ics", {}).get("composition", ""),
+        ),
+        bigdata=BigDataInfo(
+            enabled=s.get("bigdata", {}).get("enabled", False),
+            composition=s.get("bigdata", {}).get("composition", ""),
+            cross_border=s.get("bigdata", {}).get("cross_border", ""),
+        ),
+    )
+
     att = d.get("attachment", {})
     data.attachment = AttachmentInfo(
         topology=_dict_to_att(att.get("topology", {})),
@@ -390,6 +784,6 @@ if __name__ == "__main__":
     import logging
     # 抑制 Flask/Werkzeug 的红色 WARNING 输出
     log = logging.getLogger('werkzeug')
-    log.setLevel(logging.ERROR)
-    print("  服务已启动: http://localhost:5000")
-    app.run(debug=False, port=5000)
+    log.setLevel(logging.INFO if DEV_MODE else logging.ERROR)
+    print(f"  服务已启动: http://localhost:5000 ({'开发模式' if DEV_MODE else '稳定模式'})")
+    app.run(debug=DEV_MODE, use_reloader=DEV_MODE, port=5000)
