@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>等保文档迁移工具</title>
+<link rel="stylesheet" href="/static/style.css?v=24">
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="header-top">
+      <h1>等保文档迁移工具 v2.5</h1>
+      <button type="button" id="theme_toggle" class="theme-toggle" onclick="toggleTheme()">切换浅色</button>
+    </div>
+  </div>
+
+  <!-- 步骤指示器 -->
+  <div class="steps">
+    <div class="step-item active" onclick="goStep(0)">1. 选择文件</div>
+    <div class="step-connector"></div>
+    <div class="step-item" onclick="goStep(1)">2. 编辑数据</div>
+    <div class="step-connector"></div>
+    <div class="step-item" onclick="goStep(2)">3. 生成文档</div>
+  </div>
+
+  <!-- ═══════ Step 1: 文件选择 ═══════ -->
+  <div class="panel active" id="panel-0">
+    <div class="form-group">
+      <div class="form-group-title">快速开始</div>
+      <p class="hint">输入旧项目文件夹路径，自动扫描备案表和定级报告</p>
+      <div class="form-row">
+        <label>项目目录：</label>
+        <input type="text" id="project_dir" placeholder="粘贴旧项目文件夹路径，或点右侧按钮选择">
+        <button class="btn-sm" onclick="browseDir('project_dir')">选择</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-title">批量入口</div>
+      <p class="hint">默认用总目录自动识别多个项目和系统；Excel 清单作为辅助入口，优先用于项目/系统名称对齐。</p>
+      <div class="form-row">
+        <label>总目录：</label>
+        <input type="text" id="batch_root_dir" placeholder="选择包含多个项目子目录的总目录">
+        <button class="btn-sm" onclick="browseDir('batch_root_dir')">选择</button>
+        <button class="btn-sm btn-primary" onclick="scanBatchRoot()">扫描总目录</button>
+      </div>
+      <div class="form-row">
+        <label>Excel 清单：</label>
+        <input type="text" id="manifest_file" placeholder="可选：导入等保项目清单 .xlsx">
+        <button class="btn-sm" onclick="browseFile('manifest_file','excel')">选择</button>
+        <button class="btn-sm" onclick="importBatchManifest()">导入清单</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-title">批量概览</div>
+      <div class="batch-scan-layout">
+        <div class="batch-project-panel">
+          <div id="batch-project-list" class="batch-project-list">
+            <p class="hint">尚未扫描总目录</p>
+          </div>
+        </div>
+        <div class="batch-project-detail">
+          <div id="batch-project-summary" class="batch-project-summary">扫描后会在这里显示项目、系统数量和待更新状态。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-title">项目信息</div>
+      <div class="form-row">
+        <label>项目名称：</label>
+        <input type="text" id="project_name" placeholder="如：乡宁焦煤物资采购平台">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-title">模版文件（已内置，一般无需修改）</div>
+      <div class="form-row">
+        <label>备案表模版：</label>
+        <input type="text" id="beian_template" value="{{ beian_template }}">
+        <button class="btn-sm" onclick="browseFile('beian_template')">选择</button>
+      </div>
+      <div class="form-row">
+        <label>定级报告模版：</label>
+        <input type="text" id="report_template" value="{{ report_template }}">
+        <button class="btn-sm" onclick="browseFile('report_template')">选择</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-title">旧文件（自动检测或手动填写）</div>
+      <div class="form-row">
+        <label>旧备案表：</label>
+        <input type="text" id="old_beian" placeholder="扫描后自动填入">
+        <button class="btn-sm" onclick="browseFile('old_beian')">选择</button>
+      </div>
+      <div class="form-row">
+        <label>旧定级报告：</label>
+        <input type="text" id="old_report" placeholder="扫描后自动填入">
+        <button class="btn-sm" onclick="browseFile('old_report')">选择</button>
+      </div>
+      <div class="form-row">
+        <label>调查表：</label>
+        <input type="text" id="survey" placeholder="等级保护对象基本情况调查表（可选，用于提取拓扑图）">
+        <button class="btn-sm" onclick="browseFile('survey')">选择</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="form-group-title">输出设置</div>
+      <div class="form-row">
+        <label>输出目录：</label>
+        <input type="text" id="output_dir" placeholder="生成的文件保存到哪里">
+        <button class="btn-sm" onclick="browseDir('output_dir')">选择</button>
+      </div>
+    </div>
+
+    <div id="scan-result"></div>
+  </div>
+
+  <!-- ═══════ Step 2: 编辑数据 ═══════ -->
+  <div class="panel" id="panel-1">
+    <div class="highlight-toggle">
+      <input type="checkbox" id="highlight_mode" onchange="toggleHighlightMode()">
+      <label for="highlight_mode" style="color:#ffd700;">标黄模式</label>
+      <span>— 开启后点击任意输入框可标黄/取消，标黄的字段生成文档时会高亮显示，提示客户填写</span>
+    </div>
+    <div class="batch-toolbar">
+      <div class="batch-toolbar-main">
+        <span class="batch-chip">当前项目：<strong id="current_project_label">未选择</strong></span>
+        <span class="batch-chip">当前系统：<strong id="current_system_label">未选择</strong></span>
+      </div>
+      <div class="batch-toolbar-actions">
+        <select id="system_selector" onchange="switchCurrentSystem(this.value)">
+          <option value="">当前仅单系统模式</option>
+        </select>
+        <button class="btn-sm" onclick="saveCurrentSystem()">保存当前系统</button>
+        <button class="btn-sm" onclick="reloadCurrentSystem()">重新读取旧文档</button>
+        <button class="btn-sm" onclick="addManualSystem()">新增系统</button>
+      </div>
+    </div>
+    <div id="system-status"></div>
+    <div class="editor-layout">
+      <div class="editor-main">
+        <!-- Tab 栏 -->
+        <div class="tabs">
+          <div class="tab-item active" onclick="switchTab(this,0)">单位信息</div>
+          <div class="tab-item" onclick="switchTab(this,1)">定级对象</div>
+          <div class="tab-item" onclick="switchTab(this,2)">定级等级</div>
+          <div class="tab-item" onclick="switchTab(this,3)">表四-应用场景</div>
+          <div class="tab-item" onclick="switchTab(this,4)">表五六-附件数据</div>
+          <div class="tab-item" onclick="switchTab(this,5)">定级报告</div>
+        </div>
+
+        <!-- Tab A: 单位信息 -->
+        <div class="tab-panel active" id="tab-0">
+          <div class="form-group">
+            <div class="form-group-title">基本信息</div>
+            <div class="form-row">
+              <label>单位名称：</label>
+              <input type="text" id="unit_name" data-field="unit.unit_name">
+              <button class="btn-sm" onclick="window.open('https://www.tianyancha.com/search?key='+document.getElementById('unit_name').value)">天眼查</button>
+            </div>
+            <div class="form-row">
+              <label>信用代码：</label>
+              <input type="text" id="credit_code" data-field="unit.credit_code">
+            </div>
+            <div class="form-row">
+              <label>单位地址：</label>
+              <div class="inline-group">
+                <input type="text" id="province" placeholder="省" style="width:80px">
+                <span>省</span>
+                <input type="text" id="city" placeholder="市" style="width:80px">
+                <span>市</span>
+                <input type="text" id="county" placeholder="县" style="width:80px">
+                <span>县</span>
+              </div>
+            </div>
+            <div class="form-row">
+              <label>详细地址：</label>
+              <input type="text" id="address" data-field="unit.address" placeholder="详细地址">
+            </div>
+            <div class="form-row">
+              <label>邮编/区划：</label>
+              <div class="inline-group">
+                <input type="text" id="postal_code" data-field="unit.postal_code" placeholder="邮编" style="width:100px">
+                <label>行政区划：</label>
+                <input type="text" id="admin_code" data-field="unit.admin_code" placeholder="代码" style="width:100px">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-group-title">单位负责人</div>
+            <div class="form-row"><label>姓名：</label><input type="text" id="leader_name" data-field="unit.leader.name"></div>
+            <div class="form-row"><label>职务/职称：</label><input type="text" id="leader_title" data-field="unit.leader.title"></div>
+            <div class="form-row"><label>办公电话：</label><input type="text" id="leader_phone" data-field="unit.leader.office_phone"></div>
+            <div class="form-row"><label>电子邮件：</label><input type="text" id="leader_email" data-field="unit.leader.email"></div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-group-title">网络安全责任部门</div>
+            <div class="form-row"><label>部门名称：</label><input type="text" id="sec_dept" data-field="unit.security_dept"></div>
+            <div class="form-row"><label>联系人：</label><input type="text" id="sec_name" data-field="unit.security_contact.name"></div>
+            <div class="form-row"><label>职务/职称：</label><input type="text" id="sec_title" data-field="unit.security_contact.title"></div>
+            <div class="form-row"><label>办公电话：</label><input type="text" id="sec_phone" data-field="unit.security_contact.office_phone"></div>
+            <div class="form-row"><label>移动电话：</label><input type="text" id="sec_mobile" data-field="unit.security_contact.mobile"></div>
+            <div class="form-row"><label>电子邮件：</label><input type="text" id="sec_email" data-field="unit.security_contact.email"></div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-group-title">数据安全管理部门</div>
+            <div class="form-row"><label></label><button class="btn-sm" onclick="copySec2Data()">复制安全责任部门信息</button></div>
+            <div class="form-row"><label>部门名称：</label><input type="text" id="data_dept" data-field="unit.data_dept"></div>
+            <div class="form-row"><label>联系人：</label><input type="text" id="data_name" data-field="unit.data_contact.name"></div>
+            <div class="form-row"><label>职务/职称：</label><input type="text" id="data_title" data-field="unit.data_contact.title"></div>
+            <div class="form-row"><label>办公电话：</label><input type="text" id="data_phone" data-field="unit.data_contact.office_phone"></div>
+            <div class="form-row"><label>移动电话：</label><input type="text" id="data_mobile" data-field="unit.data_contact.mobile"></div>
+            <div class="form-row"><label>电子邮件：</label><input type="text" id="data_email" data-field="unit.data_contact.email"></div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-group-title">单位属性</div>
+            <div class="form-row"><label>隶属关系：</label><select id="affiliation"><option value="">请选择</option><option>1-中央</option><option>2-省(自治区、直辖市)</option><option>3-地(市、州、盟)</option><option>4-县(区、市、旗)</option><option>9-其他</option></select></div>
+            <div class="form-row"><label>单位类型：</label><select id="unit_type"><option value="">请选择</option><option>1-党委机关</option><option>2-政府机关</option><option>3-事业单位</option><option>4-企业</option><option>9-其他</option></select></div>
+            <div class="form-row"><label>行业类别：</label><select id="industry"><option value="">请选择</option><option>1-海关</option><option>2-税务</option><option>3-市场监督管理</option><option>4-广播电视</option><option>5-体育</option><option>6-统计</option><option>13-发展和改革</option><option>14-教育</option><option>15-科学技术</option><option>16-工业和信息化</option><option>18-公安</option><option>20-民政</option><option>22-财政</option><option>23-人力资源和社会保障</option><option>24-自然资源</option><option>25-生态环境</option><option>26-住房和城乡建设</option><option>27-交通运输</option><option>28-水利</option><option>29-农业农村</option><option>30-商务</option><option>32-卫生健康</option><option>34-应急管理</option><option>35-银行</option><option>38-电信</option><option>39-经营性互联网</option><option>44-电力</option><option>45-能源</option><option>48-电子政务</option><option>99-其他</option></select></div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-group-title">定级对象数量</div>
+            <div class="form-row">
+              <label>本次备案：</label>
+              <div class="inline-group">
+                <label>总数</label><input type="text" id="cur_total" value="1">
+                <label>二级</label><input type="text" id="cur_l2" value="1">
+                <label>三级</label><input type="text" id="cur_l3" value="0">
+                <label>四级</label><input type="text" id="cur_l4" value="0">
+                <label>五级</label><input type="text" id="cur_l5" value="0">
+              </div>
+            </div>
+            <div class="form-row">
+              <label>总数(含本次)：</label>
+              <div class="inline-group">
+                <label>总数</label><input type="text" id="all_total" value="1">
+                <label>一级</label><input type="text" id="all_l1" value="0">
+                <label>二级</label><input type="text" id="all_l2" value="1">
+                <label>三级</label><input type="text" id="all_l3" value="0">
+                <label>四级</label><input type="text" id="all_l4" value="0">
+                <label>五级</label><input type="text" id="all_l5" value="0">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab B: 定级对象 -->
+        <div class="tab-panel" id="tab-1">
+          <div class="form-group">
+            <div class="form-group-title">基本信息</div>
+            <div class="form-row"><label>对象名称：</label><input type="text" id="target_name" data-field="target.name"></div>
+            <div class="form-row"><label>编号：</label><input type="text" id="target_code" data-field="target.code" placeholder="如 26003" style="width:150px"></div>
+            <div class="form-row"><label>对象类型：</label><select id="target_type" onchange="onTargetTypeChange()"><option>信息系统</option><option>通信网络设施</option><option>数据资源</option></select></div>
+            <div class="form-group tech-type-group" id="tech_type_group" style="margin-left:120px;padding:8px 12px;">
+              <div class="form-group-title">采用技术（可多选）</div>
+              <div class="checkbox-row" style="flex-wrap:wrap;gap:12px;">
+                <label><input type="checkbox" id="tech_cloud" onchange="syncTechToScenario()"> 01 云计算技术</label>
+                <label><input type="checkbox" id="tech_mobile" onchange="syncTechToScenario()"> 02 移动互联技术</label>
+                <label><input type="checkbox" id="tech_iot" onchange="syncTechToScenario()"> 03 物联网技术</label>
+                <label><input type="checkbox" id="tech_ics" onchange="syncTechToScenario()"> 04 工业控制技术</label>
+                <label><input type="checkbox" id="tech_bigdata" onchange="syncTechToScenario()"> 05 大数据技术</label>
+                <label><input type="checkbox" id="tech_other" onchange="syncTechToScenario()"> 09 其他</label>
+              </div>
+            </div>
+            <div class="form-row"><label>业务类型：</label><select id="biz_type"><option value="">请选择</option><option>1-生产作业</option><option>2-指挥调度</option><option>3-内部办公</option><option>4-公众服务</option><option>9-其他</option></select></div>
+            <div class="form-row"><label>业务描述：</label><textarea id="biz_desc" data-field="target.biz_desc" rows="3"></textarea></div>
+          </div>
+          <div class="form-group">
+            <div class="form-group-title">网络与服务</div>
+            <div class="form-row"><label>服务范围：</label><select id="svc_scope" onchange="toggleOtherInput(this,'svc_scope_other')"><option value="">请选择</option><option>30-地(市、区)内</option><option>20-全省(区、市)</option><option>10-全国</option><option>99-其他</option></select><input type="text" id="svc_scope_other" placeholder="请填写具体服务范围" style="display:none;width:200px;"></div>
+            <div class="form-row"><label>服务对象：</label><select id="svc_target" onchange="toggleOtherInput(this,'svc_target_other')"><option value="">请选择</option><option>1-单位内部人员</option><option>2-社会公众人员</option><option>3-两者均包括</option><option>9-其他</option></select><input type="text" id="svc_target_other" placeholder="请填写具体服务对象" style="display:none;width:200px;"></div>
+            <div class="form-row"><label>部署范围：</label><select id="deploy_scope"><option value="">请选择</option><option>1-局域网</option><option>2-城域网</option><option>3-广域网</option><option>9-其他</option></select></div>
+            <div class="form-row"><label>网络性质：</label><select id="net_type"><option value="">请选择</option><option>1-业务专网</option><option>2-互联网</option><option>9-其他</option></select></div>
+            <div class="form-row"><label>互联情况：</label><input type="text" id="interconnect" data-field="target.interconnect"></div>
+            <div class="form-row"><label>运行时间：</label><input type="text" id="run_date" data-field="target.run_date" placeholder="如 2022 年 12 月 01 日"></div>
+          </div>
+          <div class="form-group">
+            <div class="form-group-title">上级系统</div>
+            <div class="form-row"><label>是否分系统：</label><select id="is_sub"><option>否</option><option>是</option></select></div>
+            <div class="form-row"><label>上级系统名称：</label><input type="text" id="parent_sys" data-field="target.parent_system"></div>
+            <div class="form-row"><label>上级系统单位：</label><input type="text" id="parent_unit" data-field="target.parent_unit"></div>
+          </div>
+        </div>
+
+        <!-- Tab C: 定级等级 -->
+        <div class="tab-panel" id="tab-2">
+          <div class="form-group">
+            <div class="form-group-title">安全保护等级</div>
+            <div class="form-row"><label>业务信息等级：</label><select id="biz_level" onchange="updateFinalLevel()"><option>第一级</option><option selected>第二级</option><option>第三级</option><option>第四级</option><option>第五级</option></select></div>
+            <div class="form-row"><label>系统服务等级：</label><select id="svc_level" onchange="updateFinalLevel()"><option>第一级</option><option selected>第二级</option><option>第三级</option><option>第四级</option><option>第五级</option></select></div>
+            <div class="form-row"><label>最终等级：</label><span id="final_level" style="color:var(--primary);font-size:16px;font-weight:bold;">第二级</span></div>
+          </div>
+          <div class="form-group">
+            <div class="form-group-title">定级信息</div>
+            <div class="form-row"><label>定级时间：</label><input type="text" id="grading_date" placeholder="如 2024 年 12 月 14 日"></div>
+            <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="has_report" checked><label for="has_report">有定级报告</label></div></div>
+            <div class="form-row"><label>报告附件名：</label><input type="text" id="report_name"></div>
+            <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="has_review" checked><label for="has_review">已专家评审</label></div></div>
+            <div class="form-row"><label>评审附件名：</label><input type="text" id="review_name"></div>
+            <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="has_supervisor" onchange="onSupervisorChange()"><label for="has_supervisor">有上级行业主管部门</label></div></div>
+            <div class="form-row"><label>主管部门：</label><input type="text" id="supervisor_name"></div>
+            <div class="form-row" id="supervisor_review_row" style="display:none;"><label></label><div class="checkbox-row"><input type="checkbox" id="supervisor_reviewed"><label for="supervisor_reviewed">主管部门已审核</label></div></div>
+            <hr style="border-color:var(--border);margin:12px 0;">
+            <div class="form-row"><label>填表人：</label><input type="text" id="filler"></div>
+            <div class="form-row"><label>填表日期：</label><input type="text" id="fill_date"></div>
+          </div>
+        </div>
+
+        <!-- Tab D: 表四-应用场景 -->
+        <div class="tab-panel" id="tab-3">
+          <p class="hint">传统系统全部不勾选即可跳过，以下子字段自动禁用。</p>
+
+          <div class="form-group">
+            <div class="form-group-title">云计算</div>
+            <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="cloud_enabled" onchange="toggleSection('cloud')"><label for="cloud_enabled">采用云计算技术</label></div></div>
+            <div class="cloud-fields">
+              <div class="form-row"><label>责任主体：</label><select id="cloud_role" disabled><option value="">请选择</option><option>云服务商</option><option>云服务客户</option><option>二者均勾选</option></select></div>
+              <div class="form-row"><label>服务模式：</label><select id="cloud_service" disabled><option value="">请选择</option><option>IaaS</option><option>PaaS</option><option>SaaS</option></select></div>
+              <div class="form-row"><label>部署模式：</label><select id="cloud_deploy" disabled><option value="">请选择</option><option>私有云</option><option>公有云</option><option>混合云</option></select></div>
+              <div class="form-row"><label>云服务商：</label><input type="text" id="cloud_provider" disabled></div>
+              <div class="form-row"><label>平台等级：</label><input type="text" id="cloud_plat_level" disabled></div>
+              <div class="form-row"><label>平台名称：</label><input type="text" id="cloud_plat_name" disabled></div>
+              <div class="form-row"><label>备案编号：</label><input type="text" id="cloud_plat_code" disabled></div>
+              <div class="form-row"><label>运维地点：</label><input type="text" id="cloud_ops" disabled></div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-group-title">移动互联</div>
+            <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="mobile_enabled" onchange="toggleSection('mobile')"><label for="mobile_enabled">采用移动互联技术</label></div></div>
+            <div class="mobile-fields">
+              <div class="form-row"><label>应用名称：</label><input type="text" id="mobile_app" disabled></div>
+              <div class="form-row"><label>无线通道：</label><select id="mobile_wireless" disabled><option value="">请选择</option><option>公共WIFI</option><option>专用WIFI</option><option>移动通信网</option></select></div>
+              <div class="form-row"><label>终端类型：</label><select id="mobile_terminal" disabled><option value="">请选择</option><option>通用终端</option><option>专用终端</option></select></div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-group-title">物联网</div>
+            <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="iot_enabled" onchange="toggleSection('iot')"><label for="iot_enabled">物联网系统</label></div></div>
+            <div class="iot-fields">
+              <div class="form-row"><label>感知层：</label><input type="text" id="iot_perception" disabled></div>
+              <div class="form-row"><label>传输层：</label><input type="text" id="iot_transport" disabled></div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-group-title">工业控制</div>
+            <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="ics_enabled" onchange="toggleSection('ics')"><label for="ics_enabled">工业控制系统</label></div></div>
+            <div class="ics-fields">
+              <div class="form-row"><label>功能层次：</label><input type="text" id="ics_layer" disabled></div>
+              <div class="form-row"><label>系统组成：</label><input type="text" id="ics_comp" disabled></div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-group-title">大数据</div>
+            <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="bigdata_enabled" onchange="toggleSection('bigdata')"><label for="bigdata_enabled">采用大数据技术</label></div></div>
+            <div class="bigdata-fields">
+              <div class="form-row"><label>系统组成：</label><input type="text" id="bigdata_comp" disabled></div>
+              <div class="form-row"><label>出境情况：</label><select id="bigdata_cross" disabled><option>无出境需求</option><option>有出境需求</option></select></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab E: 表五六-附件数据 -->
+        <div class="tab-panel" id="tab-4">
+          <div class="form-group">
+            <div class="form-group-title">表五 — 提交材料情况</div>
+            <p class="hint">一般前两项选"有"，其余选"无"</p>
+            <div class="form-row"><label>网络拓扑结构：</label><div class="checkbox-row"><input type="checkbox" id="att_topology" checked></div><input type="text" id="att_topology_name" placeholder="附件名称"></div>
+            <div class="form-row"><label>安全管理制度：</label><div class="checkbox-row"><input type="checkbox" id="att_org" checked></div><input type="text" id="att_org_name" placeholder="附件名称"></div>
+            <div class="form-row"><label>建设/整改方案：</label><div class="checkbox-row"><input type="checkbox" id="att_design"></div><input type="text" id="att_design_name" placeholder="附件名称"></div>
+            <div class="form-row"><label>安全产品清单：</label><div class="checkbox-row"><input type="checkbox" id="att_product"></div><input type="text" id="att_product_name" placeholder="附件名称"></div>
+            <div class="form-row"><label>安全服务清单：</label><div class="checkbox-row"><input type="checkbox" id="att_service"></div><input type="text" id="att_service_name" placeholder="附件名称"></div>
+            <div class="form-row"><label>主管部门文件：</label><div class="checkbox-row"><input type="checkbox" id="att_supervisor"></div><input type="text" id="att_supervisor_name" placeholder="附件名称"></div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-group-title">表六 — 数据信息</div>
+            <div class="form-row"><label>数据名称：</label><input type="text" id="data_name_field" placeholder="如 物资采购数据"></div>
+            <div class="form-row"><label>数据级别：</label><select id="data_level"><option>1-一般数据</option><option>2-重要及以上数据</option></select></div>
+            <div class="form-row"><label>数据类别：</label><input type="text" id="data_category" placeholder="如 业务数据"></div>
+            <div class="form-row"><label>安全责任部门：</label><input type="text" id="data_sec_dept"></div>
+            <div class="form-row"><label>安全负责人：</label><input type="text" id="data_sec_person"></div>
+            <div class="form-row"><label>个人信息：</label><select id="personal_info"><option value="">请选择</option><option>1-涉及敏感个人信息</option><option>2-涉及未成年人个人信息</option><option>3-涉及一般个人信息</option><option>4-不涉及</option></select></div>
+            <div class="form-row"><label>数据总量：</label><input type="text" id="total_size" placeholder="如 30"><span style="color:var(--text-sec);">GB</span></div>
+            <div class="form-row"><label>月增长量：</label><input type="text" id="monthly_growth" placeholder="如 1"><span style="color:var(--text-sec);">GB</span></div>
+            <hr style="border-color:var(--border);margin:12px 0;">
+            <div class="form-row"><label>数据来源：</label><select id="data_source"><option value="">请选择</option><option>1-本单位内部产生</option><option>2-外部采集</option><option>3-二者均有</option><option>9-其他</option></select></div>
+            <div class="form-row"><label>数据来源单位：</label><input type="text" id="inflow_units" placeholder="数据流入的来源单位（如无则留空）"></div>
+            <div class="form-row"><label>数据流出单位：</label><input type="text" id="outflow_units" placeholder="数据流出的目标单位（如无则留空）"></div>
+            <div class="form-row"><label>存储位置：</label><select id="storage_type" onchange="onStorageTypeChange()"><option value="">请选择</option><option>非云计算平台</option><option>云计算平台</option></select></div>
+            <div class="form-row" id="storage_room_row" style="display:none;"><label>机房位置：</label><select id="storage_room"><option value="">请选择</option><option>本单位机房</option><option>外单位机房</option><option>国内第三方托管机房</option></select></div>
+            <div class="form-row" id="storage_cloud_row" style="display:none;"><label>云平台名称：</label><input type="text" id="storage_cloud" placeholder="如 阿里云"></div>
+            <div class="form-row"><label>数据位置：</label><select id="storage_region"><option>境内</option><option>境外</option><option>二者均有</option></select></div>
+          </div>
+        </div>
+
+        <!-- Tab F: 定级报告 -->
+        <div class="tab-panel" id="tab-5">
+          <div class="form-group">
+            <div class="form-group-title">一、定级对象描述</div>
+            <div class="form-row"><label>(一) 责任主体：</label><textarea id="rpt_responsibility" rows="3"></textarea></div>
+            <div class="form-row"><label>(二) 对象构成：</label><textarea id="rpt_composition" rows="3"></textarea></div>
+            <div class="form-row"><label>网络拓扑图：</label><input type="text" id="rpt_topology" placeholder="拓扑图文件路径 (.png/.jpg)"><button class="btn-sm" onclick="browseImage('rpt_topology')">选择</button></div>
+            <div class="form-row"><label>(三) 承载业务：</label><textarea id="rpt_business" rows="3"></textarea></div>
+            <div class="form-row"><label>(四) 安全责任：</label><textarea id="rpt_security" rows="3"></textarea></div>
+          </div>
+          <div class="form-group">
+            <div class="form-group-title">二、等级确定描述</div>
+            <div class="form-row"><label>业务信息描述：</label><textarea id="rpt_biz_info" rows="2"></textarea></div>
+            <div class="form-row"><label>侵害客体：</label><textarea id="rpt_biz_victim" rows="2"></textarea></div>
+            <div class="form-row"><label>侵害程度：</label><textarea id="rpt_biz_degree" rows="2"></textarea></div>
+            <div class="form-row"><label>服务描述：</label><textarea id="rpt_svc_desc" rows="2"></textarea></div>
+            <div class="form-row"><label>侵害客体：</label><textarea id="rpt_svc_victim" rows="2"></textarea></div>
+            <div class="form-row"><label>侵害程度：</label><textarea id="rpt_svc_degree" rows="2"></textarea></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧实时预览 -->
+      <div class="editor-preview">
+        <div class="preview-panel">
+          <h3>实时预览</h3>
+          <div id="preview-content">
+            <p class="hint">加载数据后显示文档预览</p>
+          </div>
+        </div>
+
+        <div class="log-panel" style="margin-top:12px;">
+          <div class="log-header" onclick="document.getElementById('log-body').style.display=document.getElementById('log-body').style.display==='none'?'block':'none'">
+            <span>变更日志</span><span id="log-count">0 条</span>
+          </div>
+          <div class="log-content" id="log-body"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ Step 3: 生成文档 ═══════ -->
+  <div class="panel" id="panel-2">
+    <div class="form-group">
+      <div class="form-group-title">生成文档</div>
+      <p class="hint">先预览确认内容正确，再正式生成到输出目录。</p>
+      <div style="display:flex;gap:10px;justify-content:center;margin:16px 0;">
+        <button onclick="previewDoc('beian')">预览备案表</button>
+        <button onclick="previewDoc('report')">预览定级报告</button>
+        <button class="btn-primary" onclick="generateDocs()" style="padding:8px 28px;">正式生成</button>
+      </div>
+      <div id="gen-result"></div>
+    </div>
+    <div class="form-group">
+      <div class="form-group-title">批量执行</div>
+      <p class="hint">会读取每个项目目录下的状态文件，自动跳过已更新系统；如果旧文档或当前草稿发生变化，会重新生成。</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:16px 0;">
+        <button onclick="saveCurrentSystem()">保存当前系统</button>
+        <button class="btn-primary" onclick="generateBatchDocs()">批量生成待更新项</button>
+      </div>
+      <div id="batch-result"></div>
+    </div>
+  </div>
+
+  <!-- 导航 -->
+  <div class="nav-bar">
+    <button id="btn-prev" onclick="prevStep()" style="display:none;">上一步</button>
+    <button id="btn-next" class="btn-primary" onclick="nextStep()">下一步</button>
+  </div>
+</div>
+
+<script>
+// ── 全局状态 ──
+let currentStep = 0;
+const changeLog = [];
+window.__DEV_MODE__ = {{ 'true' if dev_mode else 'false' }};
+
+// ── 系统文件/文件夹选择 ──
+async function browseDir(targetId) {
+  try {
+    const res = await fetch('/api/browse_dir', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const data = await res.json();
+    if (data.path) {
+      document.getElementById(targetId).value = data.path;
+      // 选择项目目录后自动扫描
+      if (targetId === 'project_dir') scanDir();
+    }
+  } catch(e) { console.log('browse error:', e); }
+}
+async function browseFile(targetId, types='doc') {
+  try {
+    const res = await fetch('/api/browse_file', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({types})});
+    const data = await res.json();
+    if (data.path) document.getElementById(targetId).value = data.path;
+  } catch(e) { console.log('browse error:', e); }
+}
+async function browseImage(targetId) {
+  try {
+    const res = await fetch('/api/browse_file', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({types:'image'})});
+    const data = await res.json();
+    if (data.path) document.getElementById(targetId).value = data.path;
+  } catch(e) { console.log('browse error:', e); }
+}
+
+// ── 步骤导航 ──
+function goStep(n) {
+  if (n === 1 && currentStep === 0) { nextStep(); return; }
+  if (n < currentStep || n === currentStep) { showStep(n); }
+}
+function showStep(n) {
+  currentStep = n;
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i===n));
+  document.querySelectorAll('.step-item').forEach((s,i) => {
+    s.classList.remove('active','done');
+    if (i < n) s.classList.add('done');
+    else if (i === n) s.classList.add('active');
+  });
+  document.querySelectorAll('.step-connector').forEach((c,i) => c.classList.toggle('done', i < n));
+  document.getElementById('btn-prev').style.display = n > 0 ? '' : 'none';
+  document.getElementById('btn-next').style.display = n < 2 ? '' : 'none';
+  if (n === 1) updatePreview();
+}
+function prevStep() { prevTabOrStep(); }
+function nextStep() {
+  if (currentStep === 0) {
+    if (!document.getElementById('project_name').value.trim()) {
+      showModal('请输入项目名称'); return;
+    }
+    loadOldData();
+  } else if (currentStep === 1) {
+    // 在 Step2 中按 Tab 顺序导航，最后一个 Tab 才进入 Step3
+    const tabs = document.querySelectorAll('.tab-item');
+    let activeIdx = 0;
+    tabs.forEach((t, i) => { if (t.classList.contains('active')) activeIdx = i; });
+    if (activeIdx < tabs.length - 1) {
+      switchTab(tabs[activeIdx + 1], activeIdx + 1);
+    } else {
+      showStep(2);
+    }
+  }
+}
+function prevTabOrStep() {
+  if (currentStep === 1) {
+    const tabs = document.querySelectorAll('.tab-item');
+    let activeIdx = 0;
+    tabs.forEach((t, i) => { if (t.classList.contains('active')) activeIdx = i; });
+    if (activeIdx > 0) {
+      switchTab(tabs[activeIdx - 1], activeIdx - 1);
+      return;
+    }
+  }
+  if (currentStep > 0) showStep(currentStep - 1);
+}
+
+// ── Tab 切换 ──
+function switchTab(el, n) {
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-'+n).classList.add('active');
+}
+
+// ── 扫描目录 ──
+async function scanDir() {
+  const dir = document.getElementById('project_dir').value.trim();
+  if (!dir) { showModal('请输入项目目录路径'); return; }
+  try {
+    const res = await fetch('/api/scan_dir', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({dir_path: dir})
+    });
+    const data = await res.json();
+    if (data.error) { showAlert('scan-result', data.error, 'error'); return; }
+    if (data.old_beian) document.getElementById('old_beian').value = data.old_beian;
+    if (data.old_report) document.getElementById('old_report').value = data.old_report;
+    if (data.survey) document.getElementById('survey').value = data.survey;
+    if (data.project_name) document.getElementById('project_name').value = data.project_name;
+    if (data.output_dir) document.getElementById('output_dir').value = data.output_dir;
+    const found = [];
+    if (data.old_beian) found.push('备案表: ' + data.old_beian.split(/[/\\]/).pop());
+    if (data.old_report) found.push('定级报告: ' + data.old_report.split(/[/\\]/).pop());
+    showAlert('scan-result', '扫描完成！\n' + (found.length ? found.join('\n') : '未找到旧文件'), found.length ? 'success' : 'info');
+  } catch(e) { showAlert('scan-result', '扫描失败: '+e, 'error'); }
+}
+
+// ── 加载旧数据 ──
+async function loadOldData() {
+  const oldBeian = document.getElementById('old_beian').value.trim();
+  const oldReport = document.getElementById('old_report').value.trim();
+
+  if (!oldBeian && !oldReport) { showStep(1); return; }
+
+  try {
+    const res = await fetch('/api/load_data', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({old_beian: oldBeian, old_report: oldReport})
+    });
+    const result = await res.json();
+
+    if (result.errors && result.errors.length) {
+      showModal('加载错误：\n' + result.errors.join('\n'));
+      if (!result.beian_data && !result.report_data) return;
+    }
+
+    if (result.beian_data) fillBeianData(result.beian_data);
+    if (result.report_data) fillReportData(result.report_data);
+
+    // 加载调查表拓扑图
+    const surveyPath = document.getElementById('survey').value.trim();
+    if (surveyPath) {
+      try {
+        const sres = await fetch('/api/load_survey', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({survey_path: surveyPath})
+        });
+        const sdata = await sres.json();
+        if (sdata.topology_image) {
+          setField('rpt_topology', sdata.topology_image);
+          addLog('自动填充', '拓扑图', '', '从调查表提取');
+        }
+        if (sdata.topology_desc) {
+          // 追加到对象构成描述
+          const comp = document.getElementById('rpt_composition');
+          if (comp.value) comp.value += '\n';
+          comp.value += sdata.topology_desc;
+          addLog('自动填充', '拓扑描述', '', sdata.topology_desc.slice(0,30)+'...');
+        }
+      } catch(e) { console.log('调查表加载失败:', e); }
+    }
+
+    showStep(1);
+    updatePreview();
+
+    const count = changeLog.length;
+    if (count > 0) {
+      showModal(`已自动填充 ${count} 个字段。\n\n以下需手动确认：\n- 表四：新技术应用场景\n- 表五：提交材料情况\n- 定级报告：网络拓扑图`);
+    }
+  } catch(e) { showModal('加载失败: '+e); }
+}
+
+// ── 填充备案表数据 ──
+function fillBeianData(d) {
+  const u = d.unit || {};
+  setField('unit_name', u.unit_name);
+  setField('credit_code', u.credit_code);
+  setField('province', u.province);
+  setField('city', u.city);
+  setField('county', u.county);
+  setField('address', u.address);
+  setField('postal_code', u.postal_code);
+  setField('admin_code', u.admin_code);
+  const ldr = u.leader || {};
+  setField('leader_name', ldr.name);
+  setField('leader_title', ldr.title);
+  setField('leader_phone', ldr.office_phone);
+  setField('leader_email', ldr.email);
+  setField('sec_dept', u.security_dept);
+  const sc = u.security_contact || {};
+  setField('sec_name', sc.name);
+  setField('sec_title', sc.title);
+  setField('sec_phone', sc.office_phone);
+  setField('sec_mobile', sc.mobile);
+  setField('sec_email', sc.email);
+  setField('data_dept', u.data_dept);
+  const dc = u.data_contact || {};
+  setField('data_name', dc.name);
+  setField('data_title', dc.title);
+  setField('data_phone', dc.office_phone);
+  setField('data_mobile', dc.mobile);
+  setField('data_email', dc.email);
+  // 勾选项自动选中
+  if (u.affiliation) { const el = document.getElementById('affiliation'); for (let o of el.options) { if (o.value.startsWith(u.affiliation+'-') || o.value === u.affiliation) { el.value = o.value; break; } } }
+  if (u.unit_type) { const el = document.getElementById('unit_type'); for (let o of el.options) { if (o.value.startsWith(u.unit_type+'-') || o.value === u.unit_type) { el.value = o.value; break; } } }
+  if (u.industry) { const el = document.getElementById('industry'); for (let o of el.options) { if (o.value.startsWith(u.industry+'-') || o.value === u.industry) { el.value = o.value; break; } } }
+  setField('cur_total', u.current_total);
+  setField('cur_l2', u.current_level2);
+  setField('cur_l3', u.current_level3);
+  setField('cur_l4', u.current_level4);
+  setField('cur_l5', u.current_level5);
+  setField('all_total', u.all_total);
+  setField('all_l1', u.all_level1);
+  setField('all_l2', u.all_level2);
+  setField('all_l3', u.all_level3);
+  setField('all_l4', u.all_level4);
+  setField('all_l5', u.all_level5);
+
+  const t = d.target || {};
+  setField('target_name', t.name);
+  setField('target_code', t.code);
+  setField('biz_desc', t.biz_desc);
+  setField('run_date', t.run_date);
+  setField('interconnect', t.interconnect);
+  setField('parent_sys', t.parent_system);
+  setField('parent_unit', t.parent_unit);
+  // 对象类型 select
+  if (t.target_type) {
+    const el = document.getElementById('target_type');
+    for (let o of el.options) { if (o.value === t.target_type || o.text === t.target_type || t.target_type.includes(o.value)) { el.value = o.value; break; } }
+    onTargetTypeChange();
+  }
+  // 技术类型多选
+  if (t.tech_type) {
+    t.tech_type.split(',').forEach(tech => {
+      tech = tech.trim();
+      const map = {'云计算技术':'cloud','移动互联技术':'mobile','物联网技术':'iot','工业控制技术':'ics','大数据技术':'bigdata'};
+      for (const [k,v] of Object.entries(map)) {
+        if (tech.includes(k) || tech.includes(v)) {
+          const cb = document.getElementById('tech_'+v);
+          if (cb) cb.checked = true;
+        }
+      }
+      if (tech.includes('其他') || tech.includes('09')) {
+        const cb = document.getElementById('tech_other');
+        if (cb) cb.checked = true;
+      }
+    });
+    syncTechToScenario();
+  }
+  // 业务类型 select
+  if (t.biz_type) { const el = document.getElementById('biz_type'); for (let o of el.options) { if (o.value.startsWith(t.biz_type+'-') || o.value === t.biz_type || o.value.startsWith(t.biz_type)) { el.value = o.value; break; } } }
+  // 服务范围 select
+  if (t.service_scope) { const el = document.getElementById('svc_scope'); for (let o of el.options) { if (o.value.startsWith(t.service_scope+'-') || o.value === t.service_scope || o.value.startsWith(t.service_scope)) { el.value = o.value; break; } } }
+  // 服务对象 select
+  if (t.service_target) { const el = document.getElementById('svc_target'); for (let o of el.options) { if (o.value.startsWith(t.service_target+'-') || o.value === t.service_target || o.value.startsWith(t.service_target)) { el.value = o.value; break; } } }
+  // 部署范围 select
+  if (t.deploy_scope) { const el = document.getElementById('deploy_scope'); for (let o of el.options) { if (o.value.startsWith(t.deploy_scope+'-') || o.value === t.deploy_scope || o.value.startsWith(t.deploy_scope)) { el.value = o.value; break; } } }
+  // 网络性质 select
+  if (t.network_type) { const el = document.getElementById('net_type'); for (let o of el.options) { if (o.value.startsWith(t.network_type+'-') || o.value === t.network_type || o.value.startsWith(t.network_type)) { el.value = o.value; break; } } }
+  // 是否分系统
+  if (t.is_subsystem) { document.getElementById('is_sub').value = t.is_subsystem === '是' ? '是' : '否'; }
+
+  const g = d.grading || {};
+  setField('grading_date', g.grading_date);
+  setField('report_name', g.report_name);
+  setField('review_name', g.review_name);
+  setField('filler', g.filler);
+  setField('fill_date', g.fill_date);
+  document.getElementById('has_report').checked = !!g.has_report;
+  document.getElementById('has_review').checked = !!g.has_review;
+  document.getElementById('has_supervisor').checked = !!g.has_supervisor;
+  document.getElementById('supervisor_reviewed').checked = !!g.supervisor_reviewed;
+  setField('supervisor_name', g.supervisor_name);
+  onSupervisorChange();
+  if (g.biz_level) { document.getElementById('biz_level').value = g.biz_level; }
+  if (g.service_level) { document.getElementById('svc_level').value = g.service_level; }
+  updateFinalLevel();
+
+  const s = d.scenario || {};
+  const cloud = s.cloud || {};
+  document.getElementById('cloud_enabled').checked = !!cloud.enabled;
+  setField('cloud_role', cloud.role);
+  setField('cloud_service', cloud.service_model);
+  setField('cloud_deploy', cloud.deploy_model);
+  setField('cloud_provider', cloud.provider_name);
+  setField('cloud_plat_level', cloud.platform_level);
+  setField('cloud_plat_name', cloud.platform_name);
+  setField('cloud_plat_code', cloud.platform_code);
+  setField('cloud_ops', cloud.client_ops_location);
+
+  const mobile = s.mobile || {};
+  document.getElementById('mobile_enabled').checked = !!mobile.enabled;
+  setField('mobile_app', mobile.app_name);
+  setField('mobile_wireless', mobile.wireless);
+  setField('mobile_terminal', mobile.terminal);
+
+  const iot = s.iot || {};
+  document.getElementById('iot_enabled').checked = !!iot.enabled;
+  setField('iot_perception', iot.perception);
+  setField('iot_transport', iot.transport);
+
+  const ics = s.ics || {};
+  document.getElementById('ics_enabled').checked = !!ics.enabled;
+  setField('ics_layer', ics.function_layer);
+  setField('ics_comp', ics.composition);
+
+  const bigdata = s.bigdata || {};
+  document.getElementById('bigdata_enabled').checked = !!bigdata.enabled;
+  setField('bigdata_comp', bigdata.composition);
+  setField('bigdata_cross', bigdata.cross_border);
+  ['cloud', 'mobile', 'iot', 'ics', 'bigdata'].forEach(toggleSection);
+
+  const dd = d.data || {};
+  setField('data_name_field', dd.data_name);
+  setField('data_category', dd.data_category);
+  setField('data_sec_dept', dd.data_dept);
+  setField('data_sec_person', dd.data_person);
+  setField('total_size', dd.total_size);
+  setField('monthly_growth', dd.monthly_growth);
+  // 个人信息 select
+  if (dd.personal_info) { const el = document.getElementById('personal_info'); for (let o of el.options) { if (o.value.startsWith(dd.personal_info+'-') || o.value === dd.personal_info || o.value.startsWith(dd.personal_info)) { el.value = o.value; break; } } }
+  // 数据来源
+  if (dd.data_source) { const el = document.getElementById('data_source'); if (el) { for (let o of el.options) { if (o.value.startsWith(dd.data_source+'-') || o.value === dd.data_source || o.value.startsWith(dd.data_source)) { el.value = o.value; break; } } } }
+  // 存储位置
+  if (dd.storage_region) { const el = document.getElementById('storage_region'); if (el) el.value = dd.storage_region; }
+}
+
+function fillReportData(r) {
+  setField('rpt_responsibility', r.responsibility);
+  setField('rpt_composition', r.composition);
+  setField('rpt_business', r.business_desc);
+  setField('rpt_security', r.security_resp);
+  setField('rpt_topology', r.topology_image);
+  setField('rpt_biz_info', r.biz_info_desc);
+  setField('rpt_biz_victim', r.biz_victim);
+  setField('rpt_biz_degree', r.biz_degree);
+  setField('rpt_svc_desc', r.svc_desc);
+  setField('rpt_svc_victim', r.svc_victim);
+  setField('rpt_svc_degree', r.svc_degree);
+  if (r.biz_level) document.getElementById('biz_level').value = r.biz_level;
+  if (r.svc_level) document.getElementById('svc_level').value = r.svc_level;
+  updateFinalLevel();
+}
+
+function setField(id, value) {
+  if (!value || !value.toString().trim()) return;
+  const el = document.getElementById(id);
+  if (!el) return;
+  const v = value.toString().trim();
+  if (el.tagName === 'TEXTAREA') el.value = v;
+  else el.value = v;
+  el.classList.add('auto-filled');
+  addLog('自动填充', id.replace(/_/g,' '), '', v);
+}
+
+// ── 变更日志 ──
+function addLog(action, field, oldVal, newVal) {
+  const time = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+  changeLog.push({time, action, field, oldVal, newVal});
+  renderLog();
+}
+function renderLog() {
+  const el = document.getElementById('log-body');
+  document.getElementById('log-count').textContent = changeLog.length + ' 条';
+  el.innerHTML = changeLog.slice(-50).reverse().map(e => {
+    const cls = e.action === '自动填充' ? 'action-auto' : 'action-edit';
+    const val = e.action === '自动填充'
+      ? `→ ${trunc(e.newVal)}`
+      : `${trunc(e.oldVal)} → ${trunc(e.newVal)}`;
+    return `<div class="log-entry"><span class="${cls}">[${e.time}] ${e.action}</span> ${e.field}: ${val}</div>`;
+  }).join('');
+}
+function trunc(s, n=35) { s = (s||'').replace(/\n/g,' '); return s.length > n ? s.slice(0,n)+'...' : s; }
+
+// ── 实时预览 ──
+function updatePreview() {
+  const name = document.getElementById('project_name').value || '(项目名)';
+  const unit = document.getElementById('unit_name').value || '';
+  const code = document.getElementById('credit_code').value || '';
+  const province = document.getElementById('province').value || '';
+  const city = document.getElementById('city').value || '';
+  const county = document.getElementById('county').value || '';
+  const addr = document.getElementById('address').value || '';
+  const addrFull = [province, city, county, addr].filter(Boolean).join(' ');
+  const leader = document.getElementById('leader_name').value || '';
+  const secDept = document.getElementById('sec_dept').value || '';
+  const secName = document.getElementById('sec_name').value || '';
+  const tgtName = document.getElementById('target_name').value || '';
+  const tgtCode = document.getElementById('target_code').value || '';
+  const bizDesc = document.getElementById('biz_desc').value || '';
+  const runDate = document.getElementById('run_date').value || '';
+  const level = document.getElementById('final_level').textContent;
+  const gradDate = document.getElementById('grading_date').value || '';
+  const filler = document.getElementById('filler').value || '';
+  const dataName = document.getElementById('data_name_field').value || '';
+  const affil = document.getElementById('affiliation').value || '';
+  const utype = document.getElementById('unit_type').value || '';
+
+  function cell(v) { return v ? '<td class=\"filled\">'+trunc(v,50)+'</td>' : '<td class=\"empty\">待填写</td>'; }
+
+  document.getElementById('preview-content').innerHTML =
+    '<table class=\"preview-table\">' +
+    '<tr><th colspan=\"2\" style=\"text-align:center;color:var(--primary);\">备案表 — '+name+'</th></tr>' +
+    '<tr><th>单位名称</th>'+cell(unit)+'</tr>' +
+    '<tr><th>信用代码</th>'+cell(code)+'</tr>' +
+    '<tr><th>地址</th>'+cell(addrFull)+'</tr>' +
+    '<tr><th>隶属关系</th>'+cell(affil)+'</tr>' +
+    '<tr><th>单位类型</th>'+cell(utype)+'</tr>' +
+    '<tr><th>负责人</th>'+cell(leader)+'</tr>' +
+    '<tr><th>安全部门</th>'+cell(secDept+' '+secName)+'</tr>' +
+    '<tr><th colspan=\"2\" style=\"text-align:center;color:var(--primary);\">定级对象</th></tr>' +
+    '<tr><th>对象名称</th>'+cell(tgtName)+'</tr>' +
+    '<tr><th>编号</th>'+cell(tgtCode)+'</tr>' +
+    '<tr><th>业务描述</th>'+cell(bizDesc)+'</tr>' +
+    '<tr><th>运行时间</th>'+cell(runDate)+'</tr>' +
+    '<tr><th>安全保护等级</th><td class=\"filled\" style=\"font-weight:bold;\">'+level+'</td></tr>' +
+    '<tr><th>定级时间</th>'+cell(gradDate)+'</tr>' +
+    '<tr><th>填表人</th>'+cell(filler)+'</tr>' +
+    '<tr><th>数据名称</th>'+cell(dataName)+'</tr>' +
+    '</table>' +
+    '<p class=\"hint\" style=\"margin-top:8px;\">点击 Step 3 的"预览"按钮可用 Word 查看完整效果</p>';
+}
+
+// 监听输入变化更新预览
+document.addEventListener('input', function(e) {
+  if (currentStep === 1) updatePreview();
+  // 标记手动修改
+  if (e.target.classList.contains('auto-filled')) {
+    e.target.classList.remove('auto-filled');
+    e.target.classList.add('modified');
+  }
+});
+
+// ── 工具函数 ──
+function updateFinalLevel() {
+  const levels = {'第一级':1,'第二级':2,'第三级':3,'第四级':4,'第五级':5};
+  const biz = levels[document.getElementById('biz_level').value] || 2;
+  const svc = levels[document.getElementById('svc_level').value] || 2;
+  const final = Math.max(biz, svc);
+  const names = {1:'第一级',2:'第二级',3:'第三级',4:'第四级',5:'第五级'};
+  document.getElementById('final_level').textContent = names[final];
+}
+
+function copySec2Data() {
+  ['dept','name','title','phone','mobile','email'].forEach(f => {
+    const src = document.getElementById('sec_'+f);
+    const dst = document.getElementById('data_'+f);
+    if (src && dst) { dst.value = src.value; dst.classList.add('auto-filled'); }
+  });
+}
+
+function toggleSection(name) {
+  const enabled = document.getElementById(name+'_enabled').checked;
+  document.querySelectorAll('.'+name+'-fields input, .'+name+'-fields select').forEach(el => {
+    el.disabled = !enabled;
+  });
+}
+
+function onTargetTypeChange() {
+  const type = document.getElementById('target_type').value;
+  const group = document.getElementById('tech_type_group');
+  group.style.display = (type === '信息系统') ? 'block' : 'none';
+}
+
+function toggleOtherInput(selectEl, inputId) {
+  const input = document.getElementById(inputId);
+  const isOther = selectEl.value.includes('其他') || selectEl.value.startsWith('99') || selectEl.value.startsWith('9-');
+  input.style.display = isOther ? '' : 'none';
+  if (!isOther) input.value = '';
+}
+
+function syncTechToScenario() {
+  // 表二技术类型勾选 → 表四应用场景自动勾选
+  const map = {cloud:'cloud_enabled', mobile:'mobile_enabled', iot:'iot_enabled', ics:'ics_enabled', bigdata:'bigdata_enabled'};
+  for (const [tech, scenario] of Object.entries(map)) {
+    const techCb = document.getElementById('tech_'+tech);
+    const sceneCb = document.getElementById(scenario);
+    if (techCb && sceneCb) {
+      sceneCb.checked = techCb.checked;
+      toggleSection(tech === 'cloud' ? 'cloud' : tech === 'mobile' ? 'mobile' : tech === 'iot' ? 'iot' : tech === 'ics' ? 'ics' : 'bigdata');
+    }
+  }
+}
+
+function onStorageTypeChange() {
+  const type = document.getElementById('storage_type').value;
+  document.getElementById('storage_room_row').style.display = (type === '非云计算平台') ? '' : 'none';
+  document.getElementById('storage_cloud_row').style.display = (type === '云计算平台') ? '' : 'none';
+}
+
+function onSupervisorChange() {
+  const has = document.getElementById('has_supervisor').checked;
+  document.getElementById('supervisor_review_row').style.display = has ? '' : 'none';
+}
+
+function showAlert(containerId, msg, type) {
+  document.getElementById(containerId).innerHTML = `<div class="alert alert-${type}">${msg.replace(/\n/g,'<br>')}</div>`;
+}
+
+// ── 标黄功能 ──
+const highlightedFields = new Set();
+let highlightMode = false;
+
+function toggleHighlightMode() {
+  highlightMode = document.getElementById('highlight_mode').checked;
+  document.body.style.cursor = highlightMode ? 'crosshair' : '';
+}
+
+document.addEventListener('click', function(e) {
+  if (!highlightMode) return;
+  const el = e.target;
+  if (el.tagName === 'INPUT' && el.type === 'text' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
+    e.preventDefault();
+    e.stopPropagation();
+    const id = el.id;
+    if (!id) return;
+    if (highlightedFields.has(id)) {
+      highlightedFields.delete(id);
+      el.classList.remove('highlight-yellow');
+    } else {
+      highlightedFields.add(id);
+      el.classList.add('highlight-yellow');
+    }
+  }
+}, true);
+
+// ── 收集表单数据 ──
+function collectTechTypes() {
+  const techs = [];
+  if (document.getElementById('tech_cloud') && document.getElementById('tech_cloud').checked) techs.push('云计算技术');
+  if (document.getElementById('tech_mobile') && document.getElementById('tech_mobile').checked) techs.push('移动互联技术');
+  if (document.getElementById('tech_iot') && document.getElementById('tech_iot').checked) techs.push('物联网技术');
+  if (document.getElementById('tech_ics') && document.getElementById('tech_ics').checked) techs.push('工业控制技术');
+  if (document.getElementById('tech_bigdata') && document.getElementById('tech_bigdata').checked) techs.push('大数据技术');
+  if (document.getElementById('tech_other') && document.getElementById('tech_other').checked) techs.push('其他');
+  return techs.join(',');
+}
+function collectFormData() {
+  return {
+    project_name: document.getElementById('project_name').value,
+    unit: {
+      unit_name: document.getElementById('unit_name').value,
+      credit_code: document.getElementById('credit_code').value,
+      province: document.getElementById('province').value,
+      city: document.getElementById('city').value,
+      county: document.getElementById('county').value,
+      address: document.getElementById('address').value,
+      postal_code: document.getElementById('postal_code').value,
+      admin_code: document.getElementById('admin_code').value,
+      leader: { name: document.getElementById('leader_name').value, title: document.getElementById('leader_title').value, office_phone: document.getElementById('leader_phone').value, email: document.getElementById('leader_email').value, mobile: '' },
+      security_dept: document.getElementById('sec_dept').value,
+      security_contact: { name: document.getElementById('sec_name').value, title: document.getElementById('sec_title').value, office_phone: document.getElementById('sec_phone').value, mobile: document.getElementById('sec_mobile').value, email: document.getElementById('sec_email').value },
+      data_dept: document.getElementById('data_dept').value,
+      data_contact: { name: document.getElementById('data_name').value, title: document.getElementById('data_title').value, office_phone: document.getElementById('data_phone').value, mobile: document.getElementById('data_mobile').value, email: document.getElementById('data_email').value },
+      affiliation: document.getElementById('affiliation').value,
+      unit_type: document.getElementById('unit_type').value,
+      industry: document.getElementById('industry').value,
+      current_total: document.getElementById('cur_total').value,
+      current_level2: document.getElementById('cur_l2').value,
+      current_level3: document.getElementById('cur_l3').value,
+      current_level4: document.getElementById('cur_l4').value,
+      current_level5: document.getElementById('cur_l5').value,
+      all_total: document.getElementById('all_total').value,
+      all_level1: document.getElementById('all_l1').value,
+      all_level2: document.getElementById('all_l2').value,
+      all_level3: document.getElementById('all_l3').value,
+      all_level4: document.getElementById('all_l4').value,
+      all_level5: document.getElementById('all_l5').value,
+    },
+    target: {
+      name: document.getElementById('target_name').value,
+      code: document.getElementById('target_code').value,
+      target_type: document.getElementById('target_type').value,
+      tech_type: collectTechTypes(),
+      biz_type: document.getElementById('biz_type').value,
+      biz_desc: document.getElementById('biz_desc').value,
+      service_scope: document.getElementById('svc_scope').value,
+      service_target: document.getElementById('svc_target').value,
+      deploy_scope: document.getElementById('deploy_scope').value,
+      network_type: document.getElementById('net_type').value,
+      interconnect: document.getElementById('interconnect').value,
+      run_date: document.getElementById('run_date').value,
+      is_subsystem: document.getElementById('is_sub').value,
+      parent_system: document.getElementById('parent_sys').value,
+      parent_unit: document.getElementById('parent_unit').value,
+    },
+    grading: {
+      biz_level: document.getElementById('biz_level').value,
+      service_level: document.getElementById('svc_level').value,
+      final_level: document.getElementById('final_level').textContent,
+      grading_date: document.getElementById('grading_date').value,
+      has_report: document.getElementById('has_report').checked,
+      report_name: document.getElementById('report_name').value,
+      has_review: document.getElementById('has_review').checked,
+      review_name: document.getElementById('review_name').value,
+      has_supervisor: document.getElementById('has_supervisor').checked,
+      supervisor_name: document.getElementById('supervisor_name').value,
+      supervisor_reviewed: document.getElementById('supervisor_reviewed') ? document.getElementById('supervisor_reviewed').checked : false,
+      filler: document.getElementById('filler').value,
+      fill_date: document.getElementById('fill_date').value,
+    },
+    scenario: {
+      cloud: {
+        enabled: document.getElementById('cloud_enabled').checked,
+        role: document.getElementById('cloud_role').value,
+        service_model: document.getElementById('cloud_service').value,
+        deploy_model: document.getElementById('cloud_deploy').value,
+        provider_name: document.getElementById('cloud_provider').value,
+        platform_level: document.getElementById('cloud_plat_level').value,
+        platform_name: document.getElementById('cloud_plat_name').value,
+        platform_code: document.getElementById('cloud_plat_code').value,
+        client_ops_location: document.getElementById('cloud_ops').value,
+      },
+      mobile: {
+        enabled: document.getElementById('mobile_enabled').checked,
+        app_name: document.getElementById('mobile_app').value,
+        wireless: document.getElementById('mobile_wireless').value,
+        terminal: document.getElementById('mobile_terminal').value,
+      },
+      iot: {
+        enabled: document.getElementById('iot_enabled').checked,
+        perception: document.getElementById('iot_perception').value,
+        transport: document.getElementById('iot_transport').value,
+      },
+      ics: {
+        enabled: document.getElementById('ics_enabled').checked,
+        function_layer: document.getElementById('ics_layer').value,
+        composition: document.getElementById('ics_comp').value,
+      },
+      bigdata: {
+        enabled: document.getElementById('bigdata_enabled').checked,
+        composition: document.getElementById('bigdata_comp').value,
+        cross_border: document.getElementById('bigdata_cross').value,
+      },
+    },
+    attachment: {
+      topology: { has_file: document.getElementById('att_topology').checked, file_name: document.getElementById('att_topology_name').value },
+      org_policy: { has_file: document.getElementById('att_org').checked, file_name: document.getElementById('att_org_name').value },
+      design_plan: { has_file: document.getElementById('att_design').checked, file_name: document.getElementById('att_design_name').value },
+      product_list: { has_file: document.getElementById('att_product').checked, file_name: document.getElementById('att_product_name').value },
+      service_list: { has_file: document.getElementById('att_service').checked, file_name: document.getElementById('att_service_name').value },
+      supervisor_doc: { has_file: document.getElementById('att_supervisor').checked, file_name: document.getElementById('att_supervisor_name').value },
+    },
+    data: {
+      data_name: document.getElementById('data_name_field').value,
+      data_level: document.getElementById('data_level').value,
+      data_category: document.getElementById('data_category').value,
+      data_dept: document.getElementById('data_sec_dept').value,
+      data_person: document.getElementById('data_sec_person').value,
+      personal_info: document.getElementById('personal_info').value,
+      total_size: document.getElementById('total_size').value,
+      monthly_growth: document.getElementById('monthly_growth').value,
+      data_source: document.getElementById('data_source') ? document.getElementById('data_source').value : '',
+      inflow_units: document.getElementById('inflow_units') ? document.getElementById('inflow_units').value : '',
+      outflow_units: document.getElementById('outflow_units') ? document.getElementById('outflow_units').value : '',
+      storage_cloud: document.getElementById('storage_cloud') ? document.getElementById('storage_cloud').value : '',
+      storage_room: document.getElementById('storage_room') ? document.getElementById('storage_room').value : '',
+      storage_region: document.getElementById('storage_region') ? document.getElementById('storage_region').value : '',
+    },
+    highlighted_fields: Array.from(highlightedFields),
+  };
+}
+
+function collectReportData() {
+  return {
+    system_name: document.getElementById('project_name').value,
+    responsibility: document.getElementById('rpt_responsibility').value,
+    composition: document.getElementById('rpt_composition').value,
+    topology_image: document.getElementById('rpt_topology').value,
+    business_desc: document.getElementById('rpt_business').value,
+    security_resp: document.getElementById('rpt_security').value,
+    biz_info_desc: document.getElementById('rpt_biz_info').value,
+    biz_victim: document.getElementById('rpt_biz_victim').value,
+    biz_degree: document.getElementById('rpt_biz_degree').value,
+    biz_level: document.getElementById('biz_level').value,
+    svc_desc: document.getElementById('rpt_svc_desc').value,
+    svc_victim: document.getElementById('rpt_svc_victim').value,
+    svc_degree: document.getElementById('rpt_svc_degree').value,
+    svc_level: document.getElementById('svc_level').value,
+    final_level: document.getElementById('final_level').textContent,
+    subsystems: []
+  };
+}
+
+function getPaths() {
+  return {
+    project_name: document.getElementById('project_name').value,
+    beian_template: document.getElementById('beian_template').value,
+    report_template: document.getElementById('report_template').value,
+    output_dir: document.getElementById('output_dir').value,
+  };
+}
+
+// ── 预览 & 生成 ──
+async function previewDoc(type) {
+  try {
+    const res = await fetch('/api/preview', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({doc_type: type, paths: getPaths(), form_data: collectFormData(), report_data: collectReportData()})
+    });
+    const data = await res.json();
+    if (data.success) {
+      showAlert('gen-result', '预览已用 Word 打开: ' + data.path.split(/[/\\]/).pop(), 'success');
+    } else {
+      showAlert('gen-result', '预览失败: ' + data.message, 'error');
+    }
+  } catch(e) { showAlert('gen-result', '预览失败: '+e, 'error'); }
+}
+
+async function generateDocs() {
+  const outDir = document.getElementById('output_dir').value;
+  if (!outDir) { showModal('请先设置输出目录'); return; }
+  try {
+    showAlert('gen-result', '正在生成...', 'info');
+    const res = await fetch('/api/generate', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({paths: getPaths(), form_data: collectFormData(), report_data: collectReportData()})
+    });
+    const data = await res.json();
+    if (data.success) {
+      showAlert('gen-result',
+        data.message.replace(/\n/g,'<br>') +
+        '<br><br><button onclick="openDir()">打开输出目录</button>', 'success');
+    } else {
+      showAlert('gen-result', data.message, 'error');
+    }
+  } catch(e) { showAlert('gen-result', '生成失败: '+e, 'error'); }
+}
+
+async function openDir() {
+  await fetch('/api/open_dir', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({dir_path: document.getElementById('output_dir').value})
+  });
+}
+/* ── 居中弹窗 ── */
+function showModal(msg) {
+  document.getElementById('modal-msg').innerHTML = msg.replace(/\n/g,'<br>');
+  document.getElementById('modal-overlay').style.display = 'flex';
+}
+function closeModal() {
+  document.getElementById('modal-overlay').style.display = 'none';
+}
+</script>
+<script src="/static/batch.js?v=1"></script>
+{% if dev_mode %}
+<script>
+(() => {
+  let lastSignature = null;
+  let hadFailure = false;
+
+  async function checkDevStatus() {
+    try {
+      const res = await fetch('/api/dev_status', {cache: 'no-store'});
+      const data = await res.json();
+      if (!data.dev_mode) return;
+      if (lastSignature === null) {
+        lastSignature = data.signature;
+      } else if (lastSignature !== data.signature) {
+        location.reload();
+        return;
+      } else if (hadFailure) {
+        location.reload();
+        return;
+      }
+      hadFailure = false;
+    } catch (err) {
+      hadFailure = true;
+    }
+  }
+
+  setInterval(checkDevStatus, 1200);
+  checkDevStatus();
+})();
+</script>
+{% endif %}
+
+<!-- 居中弹窗 -->
+<div id="modal-overlay" class="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <p id="modal-msg" class="modal-msg"></p>
+    <div class="modal-footer">
+      <button class="modal-btn" onclick="closeModal()">确定</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

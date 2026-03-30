@@ -11,7 +11,7 @@
 ├── AI/                # AI 相关工具（打标、音频、对话等）
 ├── Excel/             # Excel 处理工具
 ├── ai-assistant/      # RAG 知识库 AI 助手
-├── bat/               # 批处理脚本集合
+├── bat/               # 批处理脚本与工具集合（含等保数据爬虫）
 └── files/             # Pixiv 图片下载与处理工具
 ```
 
@@ -95,12 +95,13 @@ Pixiv 图片批量下载与处理：
 
 ---
 
-## 📜 批处理脚本 (bat/)
+## 📜 批处理脚本与工具 (bat/)
 
-包含多种实用自动化脚本，按功能分类：
+包含多种实用自动化脚本和工具，按功能分类：
 
 | 类别 | 说明 |
 |------|------|
+| **🕷️ 等保数据爬虫** | 项目进度数据爬虫，自动登录（OCR 验证码）、全量分页爬取、导出 Excel，支持 7 种项目类型，提供 CLI 和 Web GUI |
 | **🔐 安全测试** | 若依框架扫描器、SQLMap 凭证查找、弱口令字典生成 |
 | **🎮 游戏本地化** | 汉化工具 GUI、图层管理器、Fanbox 抓取、翻译合并 |
 | **📄 文档处理** | 等保完结单处理、项目归档打包、文档自动生成 |
@@ -134,6 +135,9 @@ pip install openai python-dotenv
 
 # Pixiv 工具依赖
 pip install requests
+
+# 等保爬虫依赖（bat/dengbao-scraper）
+pip install requests cryptography openpyxl ddddocr
 ```
 
 ---
@@ -151,6 +155,9 @@ python Excel/Script.py
 
 # 运行 AI 助手
 python ai-assistant/main.py
+
+# 运行等保数据爬虫
+python bat/dengbao-scraper/scraper.py
 
 ```
 
