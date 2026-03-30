@@ -7,7 +7,12 @@
 ```
 bat/
 ├── convert_ips_urls/     # IP/URL 格式转换工具
+<<<<<<< HEAD
 ├── deploy_gui/          # 通用部署器（PyQt6 + Paramiko）
+=======
+├── dengbao-scraper/      # 等保测评数据爬虫
+├── dengbao_tool/         # 等保完结单处理工具
+>>>>>>> c53aae5a778713b586c8491a6a2c5285376364e2
 ├── game/                 # 游戏本地化与图层管理工具
 ├── generate_docs/        # 文档自动生成工具
 ├── guidang/              # 项目归档工具
@@ -20,6 +25,15 @@ bat/
 ---
 
 ## 🔧 工具详情
+
+### 🕷️ 等保数据爬虫类 (`dengbao-scraper/`)
+
+| 脚本 | 功能 |
+|------|------|
+| `dengbao-scraper/scraper.py` | 项目进度数据爬虫 CLI，自动登录（OCR 验证码）、全量分页爬取、导出格式化 Excel，支持 7 种项目类型 |
+| `dengbao-scraper/gui.py` | Web GUI 界面，浏览器可视化操作爬虫，实时日志、文件下载管理 |
+
+详细说明请参阅 [dengbao-scraper/README.md](./dengbao-scraper/README.md)
 
 ### 📌 安全测试类
 
@@ -99,3 +113,6 @@ python <脚本名>.py
   - `pandas` - 数据导出
   - `requests` - 网络请求
   - `pywin32` - Windows COM 接口
+  - `cryptography` - PFX 证书处理（dengbao-scraper）
+  - `openpyxl` - Excel 导出（dengbao-scraper）
+  - `ddddocr` - OCR 验证码识别（dengbao-scraper）

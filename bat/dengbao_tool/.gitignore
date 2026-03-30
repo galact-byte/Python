@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+output/
+.omc/
+batch_update_state.json
+start-dev.bat
