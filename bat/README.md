@@ -7,6 +7,7 @@
 ```
 bat/
 ├── convert_ips_urls/     # IP/URL 格式转换工具
+├── deploy_gui/          # 通用部署器（PyQt6 + Paramiko）
 ├── game/                 # 游戏本地化与图层管理工具
 ├── generate_docs/        # 文档自动生成工具
 ├── guidang/              # 项目归档工具
@@ -27,6 +28,12 @@ bat/
 | `ruoyi_scanner.py` | 若依(RuoYi)框架漏洞扫描器 v3.0，支持非标准路径部署，检测 Druid、Swagger、Actuator、Shiro 等漏洞 |
 | `sqlmap_cred_finder.py` | 自动化 SQLMap 凭证查找，并行扫描数据库表，识别潜在的用户名/密码字段 |
 | `generate_small_dictionaries.py` | 生成常见弱口令字典及其 MD5 哈希值，用于安全测试 |
+
+### 🚀 部署运维类
+
+| 工具 | 功能 |
+|------|------|
+| `deploy_gui/` | 通用图形化部署器，支持多项目配置、ZIP 上传部署、Git 拉取部署、自定义命令部署、执行计划预览和 SSH 实时日志 |
 
 ### 🎮 游戏本地化类 (`game/`)
 
@@ -86,6 +93,7 @@ python <脚本名>.py
 - Python 3.8+
 - 部分脚本需要额外依赖：
   - `PyQt5` / `PyQt6` - GUI 工具
+  - `paramiko` - SSH / SFTP 连接
   - `python-docx` - Word 文档处理
   - `pdfplumber` - PDF 解析
   - `pandas` - 数据导出
