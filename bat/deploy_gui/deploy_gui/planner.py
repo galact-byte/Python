@@ -36,7 +36,9 @@ def build_plan(project: ProjectConfig) -> list[DeployStep]:
 
     if project.mode == "zip":
         settings = project.zip_settings
-        steps.append(DeployStep("本地打包 ZIP", "local", settings.local_zip_path or "<生成 ZIP>"))
+        source_dir = settings.local_source_dir or "<本地源目录>"
+        zip_path = settings.local_zip_path or "<生成 ZIP>"
+        steps.append(DeployStep("本地打包 ZIP", "local", f"压缩 {source_dir} -> {zip_path}"))
         steps.append(DeployStep("上传 ZIP", "upload", settings.remote_zip_path or "<上传 ZIP>"))
         steps.append(
             DeployStep(

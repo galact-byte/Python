@@ -168,8 +168,8 @@ QListWidget#projectList::item {
     background: transparent;
     border: 1px solid transparent;
     border-radius: 16px;
-    padding: 4px;
-    margin: 8px 0;
+    padding: 2px;
+    margin: 6px 0;
 }
 QListWidget#projectList::item:selected {
     background: #dbeafe;
@@ -273,6 +273,13 @@ QPlainTextEdit#logOutput {
     color: #dbeafe;
     border: 1px solid #1e293b;
     font-family: 'Cascadia Code', 'Consolas', monospace;
+}
+QSplitter#previewSplitter::handle {
+    background: #dbe7ff;
+    height: 8px;
+}
+QSplitter#previewSplitter::handle:hover {
+    background: #bfdbfe;
 }
 QScrollArea {
     border: none;
@@ -534,6 +541,7 @@ class MainWindow(QMainWindow):
         options_grid.setVerticalSpacing(14)
         self.backup_db_check = QCheckBox("备份数据库")
         self.restore_db_check = QCheckBox("恢复数据库")
+        self.include_local_db_check = QCheckBox("压缩包含本地数据库")
         self.install_deps_check = QCheckBox("安装后端依赖")
         self.build_frontend_check = QCheckBox("前端构建")
         self.restart_backend_check = QCheckBox("重启后端")
@@ -542,6 +550,7 @@ class MainWindow(QMainWindow):
         checks = [
             self.backup_db_check,
             self.restore_db_check,
+            self.include_local_db_check,
             self.install_deps_check,
             self.build_frontend_check,
             self.restart_backend_check,
@@ -584,14 +593,34 @@ class MainWindow(QMainWindow):
         self.plan_preview.setObjectName("planPreview")
         self.plan_preview.setReadOnly(True)
         self.plan_preview.setPlaceholderText("生成计划后，这里会列出每一步将要执行的命令。")
-        layout.addWidget(self.plan_preview, 1)
 
-        layout.addWidget(self._make_label("远端日志", "sectionTitle"))
+        log_title = self._make_label("远端日志", "sectionTitle")
         self.log_output = QPlainTextEdit()
         self.log_output.setObjectName("logOutput")
         self.log_output.setReadOnly(True)
         self.log_output.setPlaceholderText("开始部署后，这里会持续输出连接、执行和失败信息。")
-        layout.addWidget(self.log_output, 2)
+
+        preview_splitter = QSplitter(Qt.Orientation.Vertical)
+        preview_splitter.setObjectName("previewSplitter")
+        preview_splitter.setChildrenCollapsible(False)
+
+        plan_panel = QWidget()
+        plan_layout = QVBoxLayout(plan_panel)
+        plan_layout.setContentsMargins(0, 0, 0, 0)
+        plan_layout.setSpacing(8)
+        plan_layout.addWidget(self.plan_preview)
+
+        log_panel = QWidget()
+        log_layout = QVBoxLayout(log_panel)
+        log_layout.setContentsMargins(0, 0, 0, 0)
+        log_layout.setSpacing(8)
+        log_layout.addWidget(log_title)
+        log_layout.addWidget(self.log_output)
+
+        preview_splitter.addWidget(plan_panel)
+        preview_splitter.addWidget(log_panel)
+        preview_splitter.setSizes([280, 420])
+        layout.addWidget(preview_splitter, 1)
         return card
 
     def _create_card(self, title: str, hint: str) -> tuple[QFrame, QVBoxLayout]:
@@ -631,23 +660,32 @@ class MainWindow(QMainWindow):
     def _build_project_item_widget(self, project: ProjectConfig) -> QWidget:
         widget = QFrame()
         widget.setObjectName("projectListItem")
-        widget.setMinimumHeight(92)
+        widget.setMinimumHeight(96)
+        widget.setMaximumWidth(360)
 
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
 
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
         top_row.setSpacing(10)
-        top_row.addWidget(self._make_label(project.name or "未命名项目", "itemTitle"), 1)
-        top_row.addWidget(self._make_label(self._mode_badge_label(project.mode), "itemBadge"), 0, Qt.AlignmentFlag.AlignRight)
+        title_label = self._make_label(project.name or "未命名项目", "itemTitle")
+        title_label.setWordWrap(True)
+        badge_label = self._make_label(self._mode_badge_label(project.mode), "itemBadge")
+        badge_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top_row.addWidget(title_label, 1)
+        top_row.addWidget(badge_label, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
 
         host = project.host or "未填写服务器"
         remote_dir = project.remote_project_dir or "未填写远端目录"
+        host_label = self._make_label(f"主机: {host}", "itemMeta")
+        host_label.setWordWrap(True)
+        remote_label = self._make_label(f"目录: {remote_dir}", "itemMeta")
+        remote_label.setWordWrap(True)
         layout.addLayout(top_row)
-        layout.addWidget(self._make_label(f"主机: {host}", "itemMeta"))
-        layout.addWidget(self._make_label(f"目录: {remote_dir}", "itemMeta"))
+        layout.addWidget(host_label)
+        layout.addWidget(remote_label)
         return widget
 
     def _create_button(self, text: str, variant: str | None, handler, compact: bool = False) -> QPushButton:
@@ -715,7 +753,7 @@ class MainWindow(QMainWindow):
         for project in self.projects:
             widget = self._build_project_item_widget(project)
             item = QListWidgetItem()
-            item.setSizeHint(widget.sizeHint())
+            item.setSizeHint(widget.minimumSizeHint())
             self.project_list.addItem(item)
             self.project_list.setItemWidget(item, widget)
         if self.projects:
@@ -753,6 +791,7 @@ class MainWindow(QMainWindow):
         options = project.options
         self.backup_db_check.setChecked(options.backup_database)
         self.restore_db_check.setChecked(options.restore_database)
+        self.include_local_db_check.setChecked(options.include_local_database_in_zip)
         self.install_deps_check.setChecked(options.install_backend_deps)
         self.build_frontend_check.setChecked(options.build_frontend)
         self.restart_backend_check.setChecked(options.restart_backend)
@@ -766,6 +805,7 @@ class MainWindow(QMainWindow):
         options = DeployOptions(
             backup_database=self.backup_db_check.isChecked(),
             restore_database=self.restore_db_check.isChecked(),
+            include_local_database_in_zip=self.include_local_db_check.isChecked(),
             install_backend_deps=self.install_deps_check.isChecked(),
             build_frontend=self.build_frontend_check.isChecked(),
             restart_backend=self.restart_backend_check.isChecked(),
@@ -872,9 +912,8 @@ class MainWindow(QMainWindow):
 
     def _generate_plan(self) -> None:
         project = self._collect_form()
-        steps = build_plan(project)
-        lines = [f"{idx + 1}. [{step.side}] {step.name}: {step.command}" for idx, step in enumerate(steps)]
-        self.plan_preview.setPlainText("\n".join(lines) if lines else "当前配置未生成任何步骤。")
+        self._notify_local_database(project)
+        self._render_plan(project)
 
     def _ensure_password(self) -> bool:
         dialog = TextPromptDialog("SSH 密码", "请输入服务器密码", self, password=True)
@@ -901,7 +940,8 @@ class MainWindow(QMainWindow):
 
     def _start_deploy(self) -> None:
         project = self._collect_form()
-        self._generate_plan()
+        self._notify_local_database(project)
+        self._render_plan(project)
         if not self._ensure_password():
             return
         self.log_output.clear()
@@ -923,6 +963,33 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "部署完成", message or "部署完成。")
         else:
             QMessageBox.critical(self, "部署失败", message or "部署失败。")
+
+    def _notify_local_database(self, project: ProjectConfig) -> None:
+        if project.mode != "zip":
+            return
+        source_value = project.zip_settings.local_source_dir.strip()
+        if not source_value:
+            return
+        db_path = Path(source_value) / "backend" / "project_completion.db"
+        if not db_path.exists():
+            return
+        if project.options.include_local_database_in_zip:
+            QMessageBox.information(
+                self,
+                "检测到本地数据库",
+                f"检测到 {db_path}。\n当前已勾选“压缩包含本地数据库”，本次打包会包含该文件。",
+            )
+            return
+        QMessageBox.warning(
+            self,
+            "检测到本地数据库",
+            f"检测到 {db_path}。\n默认打包会排除该文件；如果这次确实需要上传数据库，请勾选“压缩包含本地数据库”。",
+        )
+
+    def _render_plan(self, project: ProjectConfig) -> None:
+        steps = build_plan(project)
+        lines = [f"{idx + 1}. [{step.side}] {step.name}: {step.command}" for idx, step in enumerate(steps)]
+        self.plan_preview.setPlainText("\n".join(lines) if lines else "当前配置未生成任何步骤。")
 
 
 def main() -> int:

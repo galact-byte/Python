@@ -47,8 +47,21 @@ class DeploymentRunner:
         if project.mode == "zip" and step.name == "本地打包 ZIP":
             source = Path(project.zip_settings.local_source_dir)
             target = Path(project.zip_settings.local_zip_path)
-            create_zip(source, target)
-            return CommandResult(step.command, 0, stdout=f"已生成 {target}", stderr="")
+            if not source.exists():
+                return CommandResult(step.command, 1, stdout="", stderr=f"本地源目录不存在: {source}")
+            if not source.is_dir():
+                return CommandResult(step.command, 1, stdout="", stderr=f"本地源目录不是文件夹: {source}")
+            ignored_paths = set()
+            if not project.options.include_local_database_in_zip:
+                ignored_paths.add("backend/project_completion.db")
+            create_zip(source, target, ignore_relative_paths=ignored_paths)
+            if not target.exists():
+                return CommandResult(step.command, 1, stdout="", stderr=f"ZIP 未生成: {target}")
+            size_kb = max(1, target.stat().st_size // 1024)
+            excluded_note = ""
+            if ignored_paths:
+                excluded_note = "，已排除 backend/project_completion.db"
+            return CommandResult(step.command, 0, stdout=f"已生成 {target} ({size_kb} KB){excluded_note}", stderr="")
 
         completed = subprocess.run(
             step.command,

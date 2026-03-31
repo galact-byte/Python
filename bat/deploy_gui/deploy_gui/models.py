@@ -35,6 +35,7 @@ class CustomSettings:
 class DeployOptions:
     backup_database: bool = False
     restore_database: bool = False
+    include_local_database_in_zip: bool = False
     install_backend_deps: bool = False
     build_frontend: bool = False
     restart_backend: bool = False

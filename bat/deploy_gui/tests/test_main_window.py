@@ -2,7 +2,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication, QLabel
+from PyQt6.QtWidgets import QApplication, QLabel, QSplitter
 
 from deploy_gui.main_window import MainWindow, build_program_preset
 from deploy_gui.models import ProjectConfig
@@ -18,6 +18,7 @@ def test_main_window_exposes_key_panels():
     assert window.findChild(type(window.project_list), "projectList") is not None
     assert window.findChild(type(window.plan_preview), "planPreview") is not None
     assert window.findChild(type(window.log_output), "logOutput") is not None
+    assert window.findChild(QSplitter, "previewSplitter") is not None
 
 
 def test_mode_switch_keeps_user_selected_mode():
@@ -65,3 +66,9 @@ def test_left_sidebar_uses_compact_actions_without_summary_card():
 
     assert not hasattr(window, "project_name_summary")
     assert window.findChild(type(window.project_list), "projectList") is not None
+
+
+def test_window_exposes_include_local_database_checkbox():
+    window = MainWindow()
+
+    assert window.include_local_db_check.text() == "压缩包含本地数据库"
