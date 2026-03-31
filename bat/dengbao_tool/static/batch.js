@@ -20,12 +20,14 @@ const PERSISTED_FIELD_IDS = [
   'all_total', 'all_l1', 'all_l2', 'all_l3', 'all_l4', 'all_l5',
   'target_name', 'target_code', 'target_type',
   'tech_cloud', 'tech_mobile', 'tech_iot', 'tech_ics', 'tech_bigdata', 'tech_other',
-  'biz_type', 'biz_desc', 'svc_scope', 'svc_scope_other', 'svc_target', 'svc_target_other',
-  'deploy_scope', 'net_type', 'interconnect', 'run_date', 'is_sub', 'parent_sys', 'parent_unit',
+  'biz_type', 'biz_type_other', 'biz_desc', 'svc_scope', 'svc_scope_other', 'svc_target', 'svc_target_other',
+  'deploy_scope', 'deploy_scope_other', 'net_type', 'net_type_other', 'source_ip', 'domain', 'protocol_port',
+  'interconnect', 'interconnect_other', 'run_date', 'is_sub', 'parent_sys', 'parent_unit',
   'biz_level', 'svc_level', 'grading_date', 'has_report', 'report_name', 'has_review', 'review_name',
   'has_supervisor', 'supervisor_name', 'supervisor_reviewed', 'filler', 'fill_date',
-  'cloud_enabled', 'cloud_role', 'cloud_service', 'cloud_deploy', 'cloud_provider', 'cloud_plat_level',
-  'cloud_plat_name', 'cloud_plat_code', 'cloud_ops',
+  'cloud_enabled', 'cloud_role', 'cloud_service', 'cloud_service_other', 'cloud_deploy', 'cloud_deploy_other',
+  'cloud_provider_kind', 'cloud_provider_preset', 'cloud_provider', 'cloud_provider_scale',
+  'cloud_infra_location', 'cloud_ops_location', 'cloud_plat_level', 'cloud_plat_name', 'cloud_plat_code', 'cloud_ops',
   'mobile_enabled', 'mobile_app', 'mobile_wireless', 'mobile_terminal',
   'iot_enabled', 'iot_perception', 'iot_transport',
   'ics_enabled', 'ics_layer', 'ics_comp',
@@ -33,8 +35,10 @@ const PERSISTED_FIELD_IDS = [
   'att_topology', 'att_topology_name', 'att_org', 'att_org_name', 'att_design', 'att_design_name',
   'att_product', 'att_product_name', 'att_service', 'att_service_name', 'att_supervisor', 'att_supervisor_name',
   'data_name_field', 'data_level', 'data_category', 'data_sec_dept', 'data_sec_person',
-  'personal_info', 'total_size', 'monthly_growth', 'data_source', 'inflow_units', 'outflow_units',
-  'storage_type', 'storage_room', 'storage_cloud', 'storage_region',
+  'personal_info', 'total_size', 'total_size_tb', 'total_size_records', 'monthly_growth', 'monthly_growth_tb',
+  'data_source_collect', 'data_source_generate', 'data_source_manual', 'data_source_trade', 'data_source_share',
+  'data_source_other_chk', 'data_source_other', 'inflow_units', 'outflow_units', 'interaction', 'interaction_other',
+  'storage_type', 'storage_cloud_name', 'storage_room', 'storage_room_name', 'storage_region', 'storage_region_name',
   'rpt_responsibility', 'rpt_composition', 'rpt_topology', 'rpt_business', 'rpt_security',
   'rpt_biz_info', 'rpt_biz_victim', 'rpt_biz_degree', 'rpt_svc_desc', 'rpt_svc_victim', 'rpt_svc_degree',
 ];
@@ -521,8 +525,11 @@ function applySystemSnapshot(project, system) {
   document.getElementById('output_dir').value = system.output_dir || project.output_dir || project.project_dir || '';
 
   onTargetTypeChange();
+  onNetworkTypeChange();
   onSupervisorChange();
   onStorageTypeChange();
+  toggleInteractionFields();
+  refreshCloudPresetOptions();
   ['cloud', 'mobile', 'iot', 'ics', 'bigdata'].forEach(toggleSection);
   updateFinalLevel();
   clearLog();
@@ -754,8 +761,17 @@ function applyUiState(state) {
   }
   applyHighlightedFields(state.highlighted_fields || []);
   onTargetTypeChange();
+  onNetworkTypeChange();
+  if ('cloud_provider_kind' in state) {
+    document.getElementById('cloud_provider_kind').value = state.cloud_provider_kind || 'cloud_vendor';
+  }
+  refreshCloudPresetOptions();
+  if ('cloud_provider_preset' in state) {
+    document.getElementById('cloud_provider_preset').value = state.cloud_provider_preset || '';
+  }
   onSupervisorChange();
   onStorageTypeChange();
+  toggleInteractionFields();
   ['cloud', 'mobile', 'iot', 'ics', 'bigdata'].forEach(toggleSection);
   updateFinalLevel();
 }
@@ -770,6 +786,10 @@ function applyHighlightedFields(fieldIds) {
     }
     highlightedFields.add(id);
     el.classList.add('highlight-yellow');
+  });
+  document.querySelectorAll('.highlight-btn').forEach(btn => {
+    const ids = (btn.dataset.targets || '').split(',').filter(Boolean);
+    btn.classList.toggle('active', ids.length > 0 && ids.every(id => highlightedFields.has(id)));
   });
 }
 

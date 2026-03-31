@@ -121,6 +121,64 @@ def _fill_after_keyword(cell, keyword, text):
     return False
 
 
+def _copy_run_style(src_run, dst_run):
+    """复制 run 的基础字体样式。"""
+    if src_run is None or dst_run is None:
+        return
+    dst_run.font.name = src_run.font.name
+    dst_run.font.size = src_run.font.size
+    dst_run.font.bold = src_run.font.bold
+    dst_run.font.italic = src_run.font.italic
+    if src_run.font.name:
+        _set_east_asia_font(dst_run, src_run.font.name)
+
+
+def _fill_other_option(cell, option_label, text):
+    """在“其他_____”这类选项后填充补充文本。"""
+    if not text:
+        return False
+    for para in cell.paragraphs:
+        runs = para.runs
+        for i, run in enumerate(runs):
+            if option_label in run.text:
+                for j in range(i + 1, len(runs)):
+                    target = runs[j]
+                    if '_' in target.text or target.text.strip() == '':
+                        target.text = target.text.replace('_', '', 1).strip() + text
+                        return True
+    return False
+
+
+def _fill_underline_in_paragraph(paragraph, index, value):
+    """将段落中第 index 个下划线 run 替换为值。"""
+    count = -1
+    for run in paragraph.runs:
+        if '_' not in run.text:
+            continue
+        count += 1
+        if count == index:
+            run.text = value
+            return True
+    return False
+
+
+def _fill_numbered_lines(cell, values):
+    """按段落顺序填充“1xxx____ / 2xxx____”这类多行下划线。"""
+    values = [str(v).strip() for v in values if str(v).strip()]
+    if not values:
+        return False
+    value_idx = 0
+    for para in cell.paragraphs:
+        for run in para.runs:
+            if '_' in run.text and value_idx < len(values):
+                run.text = values[value_idx]
+                value_idx += 1
+                break
+        if value_idx >= len(values):
+            return True
+    return value_idx > 0
+
+
 def _safe_set_value(table, row, col, text):
     """
     安全设置「纯值单元格」的文本。
@@ -133,7 +191,9 @@ def _safe_set_value(table, row, col, text):
         cell = table.rows[row].cells[col]
         for p in cell.paragraphs:
             if p.runs:
+                style_run = p.runs[0]
                 p.runs[0].text = str(text)
+                _copy_run_style(style_run, p.runs[0])
                 for run in p.runs[1:]:
                     run.text = ''
                 return
@@ -299,6 +359,8 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
     if tgt.biz_type:
         code = tgt.biz_type.split('-')[0] if '-' in tgt.biz_type else tgt.biz_type
         _find_and_check(t3.rows[2].cells[2], code)
+        if code == '9' and tgt.biz_type_other:
+            _fill_other_option(t3.rows[2].cells[2], '其他', tgt.biz_type_other)
 
     # 业务描述（纯值）
     _safe_set_value(t3, 3, 2, tgt.biz_desc)
@@ -307,25 +369,38 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
     if tgt.service_scope:
         code = tgt.service_scope.split('-')[0] if '-' in tgt.service_scope else tgt.service_scope
         _find_and_check(t3.rows[4].cells[2], code)
+        if code == '99' and tgt.service_scope_other:
+            _fill_other_option(t3.rows[4].cells[2], '其它', tgt.service_scope_other)
 
     # 服务对象（勾选）
     if tgt.service_target:
         code = tgt.service_target.split('-')[0] if '-' in tgt.service_target else tgt.service_target
         _find_and_check(t3.rows[5].cells[2], code)
+        if code == '9' and tgt.service_target_other:
+            _fill_other_option(t3.rows[5].cells[2], '其他', tgt.service_target_other)
 
     # 部署范围（勾选）
     if tgt.deploy_scope:
         code = tgt.deploy_scope.split('-')[0] if '-' in tgt.deploy_scope else tgt.deploy_scope
         _find_and_check(t3.rows[6].cells[2], code)
+        if code == '9' and tgt.deploy_scope_other:
+            _fill_other_option(t3.rows[6].cells[2], '其他', tgt.deploy_scope_other)
 
     # 网络性质（勾选）
     if tgt.network_type:
         code = tgt.network_type.split('-')[0] if '-' in tgt.network_type else tgt.network_type
         _find_and_check(t3.rows[7].cells[2], code)
+        if code == '2':
+            _fill_numbered_lines(t3.rows[7].cells[2], [tgt.source_ip, tgt.domain, tgt.protocol_port])
+        if code == '9' and tgt.network_type_other:
+            _fill_other_option(t3.rows[7].cells[2], '其他', tgt.network_type_other)
 
     # 网络互联（勾选）
     if tgt.interconnect:
-        _find_and_check(t3.rows[8].cells[1], tgt.interconnect)
+        code = tgt.interconnect.split('-')[0] if '-' in tgt.interconnect else tgt.interconnect
+        _find_and_check(t3.rows[8].cells[2], code)
+        if code == '9' and tgt.interconnect_other:
+            _fill_other_option(t3.rows[8].cells[2], '其它', tgt.interconnect_other)
 
     # 运行时间（纯值）
     _safe_set_value(t3, 9, 2, tgt.run_date)
@@ -396,10 +471,29 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
     if len(doc.tables) > 4:
         t5 = doc.tables[4]
         sc = data.scenario
-        if sc.cloud.enabled and sc.cloud.provider_name:
-            _safe_set_value(t5, 9, 2, sc.cloud.provider_name)
-        if sc.cloud.client_ops_location:
+        if sc.cloud.enabled:
+            _find_and_check(t5.rows[0].cells[2], '是')
+            if sc.cloud.role:
+                _find_and_check(t5.rows[1].cells[2], sc.cloud.role)
+            if sc.cloud.service_model:
+                _find_and_check(t5.rows[2].cells[2], sc.cloud.service_model)
+                if sc.cloud.service_model == '其他' and sc.cloud.service_model_other:
+                    _fill_other_option(t5.rows[2].cells[2], '其他', sc.cloud.service_model_other)
+            if sc.cloud.deploy_model:
+                _find_and_check(t5.rows[3].cells[2], sc.cloud.deploy_model)
+                if sc.cloud.deploy_model == '其他' and sc.cloud.deploy_model_other:
+                    _fill_other_option(t5.rows[3].cells[2], '其他', sc.cloud.deploy_model_other)
+            _safe_set_value(t5, 5, 2, sc.cloud.provider_scale)
+            _safe_set_value(t5, 6, 2, sc.cloud.infra_location)
+            _safe_set_value(t5, 7, 2, sc.cloud.ops_location)
+            if sc.cloud.provider_name or sc.cloud.platform_level or sc.cloud.platform_name or sc.cloud.platform_code:
+                _fill_numbered_lines(
+                    t5.rows[9].cells[2],
+                    [sc.cloud.provider_name, sc.cloud.platform_level, sc.cloud.platform_name, sc.cloud.platform_code],
+                )
             _safe_set_value(t5, 10, 2, sc.cloud.client_ops_location)
+        else:
+            _find_and_check(t5.rows[0].cells[2], '否')
 
     # ══════ 表6: 附件清单 (index 5) — 勾选有/无 ══════
     if len(doc.tables) > 5:
@@ -431,10 +525,36 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
             code = d.personal_info.split('-')[0] if '-' in d.personal_info else d.personal_info
             _find_and_check(t7.rows[3].cells[1], code)
         # 数据总量 / 月增长量 — 只填数字到下划线处
-        if d.total_size:
-            _fill_underline_field(t7.rows[4].cells[1], d.total_size)
-        if d.monthly_growth:
-            _fill_underline_field(t7.rows[5].cells[1], d.monthly_growth)
+        if d.total_size or d.total_size_tb or d.total_size_records:
+            _fill_numbered_lines(t7.rows[4].cells[1], [d.total_size or d.total_size_tb, d.total_size_records])
+        if d.monthly_growth or d.monthly_growth_tb:
+            _fill_numbered_lines(t7.rows[5].cells[1], [d.monthly_growth or d.monthly_growth_tb])
+        if d.data_source:
+            for source in d.data_source.split(','):
+                code = source.strip().split('-')[0]
+                if code:
+                    _find_and_check(t7.rows[6].cells[1], code, multi=True)
+            if '9-' in d.data_source and d.data_source_other:
+                _fill_other_option(t7.rows[6].cells[1], '其他', d.data_source_other)
+        _fill_numbered_lines(t7.rows[7].cells[1], [item.strip() for item in d.inflow_units.splitlines() if item.strip()])
+        _fill_numbered_lines(t7.rows[8].cells[1], [item.strip() for item in d.outflow_units.splitlines() if item.strip()])
+        if d.interaction:
+            code = d.interaction.split('-')[0]
+            _find_and_check(t7.rows[9].cells[1], code)
+            if code != '4' and d.interaction_other:
+                _fill_numbered_lines(t7.rows[9].cells[1], [d.interaction_other])
+        if d.storage_type:
+            code = d.storage_type.split('-')[0]
+            _find_and_check(t7.rows[10].cells[1], code)
+            _fill_numbered_lines(t7.rows[10].cells[1], [d.storage_cloud_name or d.storage_cloud])
+        if d.storage_room:
+            code = d.storage_room.split('-')[0]
+            _find_and_check(t7.rows[11].cells[1], code)
+            _fill_numbered_lines(t7.rows[11].cells[1], [d.storage_room_name])
+        if d.storage_region:
+            code = d.storage_region.split('-')[0]
+            _find_and_check(t7.rows[12].cells[1], code)
+            _fill_numbered_lines(t7.rows[12].cells[1], [d.storage_region_name])
 
     # ══════ 标黄处理 — 对用户标记的字段在文档中高亮 ══════
     if highlighted_fields:

@@ -27,43 +27,52 @@
 
   <!-- ═══════ Step 1: 文件选择 ═══════ -->
   <div class="panel active" id="panel-0">
-    <div class="form-group">
-      <div class="form-group-title">快速开始</div>
-      <p class="hint">输入旧项目文件夹路径，自动扫描备案表和定级报告</p>
-      <div class="form-row">
-        <label>项目目录：</label>
-        <input type="text" id="project_dir" placeholder="粘贴旧项目文件夹路径，或点右侧按钮选择">
-        <button class="btn-sm" onclick="browseDir('project_dir')">选择</button>
-      </div>
+    <div class="mode-tabs">
+      <button type="button" class="mode-tab active" data-mode-tab="single" onclick="switchEntryMode('single')">单项目</button>
+      <button type="button" class="mode-tab" data-mode-tab="batch" onclick="switchEntryMode('batch')">批量</button>
     </div>
 
-    <div class="form-group">
-      <div class="form-group-title">批量入口</div>
-      <p class="hint">默认用总目录自动识别多个项目和系统；Excel 清单作为辅助入口，优先用于项目/系统名称对齐。</p>
-      <div class="form-row">
-        <label>总目录：</label>
-        <input type="text" id="batch_root_dir" placeholder="选择包含多个项目子目录的总目录">
-        <button class="btn-sm" onclick="browseDir('batch_root_dir')">选择</button>
-        <button class="btn-sm btn-primary" onclick="scanBatchRoot()">扫描总目录</button>
-      </div>
-      <div class="form-row">
-        <label>Excel 清单：</label>
-        <input type="text" id="manifest_file" placeholder="可选：导入等保项目清单 .xlsx">
-        <button class="btn-sm" onclick="browseFile('manifest_file','excel')">选择</button>
-        <button class="btn-sm" onclick="importBatchManifest()">导入清单</button>
-      </div>
-    </div>
-
-    <div class="form-group">
-      <div class="form-group-title">批量概览</div>
-      <div class="batch-scan-layout">
-        <div class="batch-project-panel">
-          <div id="batch-project-list" class="batch-project-list">
-            <p class="hint">尚未扫描总目录</p>
-          </div>
+    <div class="mode-panel active" id="mode-single">
+      <div class="form-group">
+        <div class="form-group-title">快速开始</div>
+        <p class="hint">输入旧项目文件夹路径，自动扫描备案表和定级报告</p>
+        <div class="form-row">
+          <label>项目目录：</label>
+          <input type="text" id="project_dir" placeholder="粘贴旧项目文件夹路径，或点右侧按钮选择">
+          <button class="btn-sm" onclick="browseDir('project_dir')">选择</button>
         </div>
-        <div class="batch-project-detail">
-          <div id="batch-project-summary" class="batch-project-summary">扫描后会在这里显示项目、系统数量和待更新状态。</div>
+      </div>
+    </div>
+
+    <div class="mode-panel" id="mode-batch">
+      <div class="form-group">
+        <div class="form-group-title">批量入口</div>
+        <p class="hint">默认用总目录自动识别多个项目和系统；Excel 清单作为辅助入口，优先用于项目/系统名称对齐。</p>
+        <div class="form-row">
+          <label>总目录：</label>
+          <input type="text" id="batch_root_dir" placeholder="选择包含多个项目子目录的总目录">
+          <button class="btn-sm" onclick="browseDir('batch_root_dir')">选择</button>
+          <button class="btn-sm btn-primary" onclick="scanBatchRoot()">扫描总目录</button>
+        </div>
+        <div class="form-row">
+          <label>Excel 清单：</label>
+          <input type="text" id="manifest_file" placeholder="可选：导入等保项目清单 .xlsx">
+          <button class="btn-sm" onclick="browseFile('manifest_file','excel')">选择</button>
+          <button class="btn-sm" onclick="importBatchManifest()">导入清单</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-group-title">批量概览</div>
+        <div class="batch-scan-layout">
+          <div class="batch-project-panel">
+            <div id="batch-project-list" class="batch-project-list">
+              <p class="hint">尚未扫描总目录</p>
+            </div>
+          </div>
+          <div class="batch-project-detail">
+            <div id="batch-project-summary" class="batch-project-summary">扫描后会在这里显示项目、系统数量和待更新状态。</div>
+          </div>
         </div>
       </div>
     </div>
@@ -273,16 +282,16 @@
                 <label><input type="checkbox" id="tech_other" onchange="syncTechToScenario()"> 09 其他</label>
               </div>
             </div>
-            <div class="form-row"><label>业务类型：</label><select id="biz_type"><option value="">请选择</option><option>1-生产作业</option><option>2-指挥调度</option><option>3-内部办公</option><option>4-公众服务</option><option>9-其他</option></select></div>
+            <div class="form-row"><label>业务类型：</label><select id="biz_type" onchange="toggleOtherInput(this,'biz_type_other')"><option value="">请选择</option><option>1-生产作业</option><option>2-指挥调度</option><option>3-内部办公</option><option>4-公众服务</option><option>9-其他</option></select><input type="text" id="biz_type_other" placeholder="请填写具体业务类型" style="display:none;width:220px;"></div>
             <div class="form-row"><label>业务描述：</label><textarea id="biz_desc" data-field="target.biz_desc" rows="3"></textarea></div>
           </div>
           <div class="form-group">
             <div class="form-group-title">网络与服务</div>
             <div class="form-row"><label>服务范围：</label><select id="svc_scope" onchange="toggleOtherInput(this,'svc_scope_other')"><option value="">请选择</option><option>30-地(市、区)内</option><option>20-全省(区、市)</option><option>10-全国</option><option>99-其他</option></select><input type="text" id="svc_scope_other" placeholder="请填写具体服务范围" style="display:none;width:200px;"></div>
             <div class="form-row"><label>服务对象：</label><select id="svc_target" onchange="toggleOtherInput(this,'svc_target_other')"><option value="">请选择</option><option>1-单位内部人员</option><option>2-社会公众人员</option><option>3-两者均包括</option><option>9-其他</option></select><input type="text" id="svc_target_other" placeholder="请填写具体服务对象" style="display:none;width:200px;"></div>
-            <div class="form-row"><label>部署范围：</label><select id="deploy_scope"><option value="">请选择</option><option>1-局域网</option><option>2-城域网</option><option>3-广域网</option><option>9-其他</option></select></div>
-            <div class="form-row"><label>网络性质：</label><select id="net_type"><option value="">请选择</option><option>1-业务专网</option><option>2-互联网</option><option>9-其他</option></select></div>
-            <div class="form-row"><label>互联情况：</label><input type="text" id="interconnect" data-field="target.interconnect"></div>
+            <div class="form-row"><label>部署范围：</label><select id="deploy_scope" onchange="toggleOtherInput(this,'deploy_scope_other')"><option value="">请选择</option><option>1-局域网</option><option>2-城域网</option><option>3-广域网</option><option>9-其他</option></select><input type="text" id="deploy_scope_other" placeholder="请填写具体部署范围" style="display:none;width:220px;"></div>
+            <div class="form-row"><label>网络性质：</label><select id="net_type" onchange="onNetworkTypeChange()"><option value="">请选择</option><option>1-业务专网</option><option>2-互联网</option><option>9-其他</option></select><input type="text" id="net_type_other" placeholder="请填写具体网络性质" style="display:none;width:220px;"><input type="text" id="source_ip" placeholder="源站IP地址范围" style="display:none;width:220px;"><input type="text" id="domain" placeholder="域名" style="display:none;width:180px;"><input type="text" id="protocol_port" placeholder="主要协议/端口" style="display:none;width:220px;"></div>
+            <div class="form-row"><label>互联情况：</label><select id="interconnect" onchange="toggleOtherInput(this,'interconnect_other')"><option value="">请选择</option><option>1-与其他行业系统连接</option><option>2-与本行业其他单位系统连接</option><option>3-与本单位其他系统连接</option><option>9-其他</option></select><input type="text" id="interconnect_other" placeholder="请填写具体互联情况" style="display:none;width:220px;"></div>
             <div class="form-row"><label>运行时间：</label><input type="text" id="run_date" data-field="target.run_date" placeholder="如 2022 年 12 月 01 日"></div>
           </div>
           <div class="form-group">
@@ -309,7 +318,7 @@
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="has_review" checked><label for="has_review">已专家评审</label></div></div>
             <div class="form-row"><label>评审附件名：</label><input type="text" id="review_name"></div>
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="has_supervisor" onchange="onSupervisorChange()"><label for="has_supervisor">有上级行业主管部门</label></div></div>
-            <div class="form-row"><label>主管部门：</label><input type="text" id="supervisor_name"></div>
+            <div class="form-row"><label>主管部门：</label><input type="text" id="supervisor_name" value="/"></div>
             <div class="form-row" id="supervisor_review_row" style="display:none;"><label></label><div class="checkbox-row"><input type="checkbox" id="supervisor_reviewed"><label for="supervisor_reviewed">主管部门已审核</label></div></div>
             <hr style="border-color:var(--border);margin:12px 0;">
             <div class="form-row"><label>填表人：</label><input type="text" id="filler"></div>
@@ -326,13 +335,17 @@
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="cloud_enabled" onchange="toggleSection('cloud')"><label for="cloud_enabled">采用云计算技术</label></div></div>
             <div class="cloud-fields">
               <div class="form-row"><label>责任主体：</label><select id="cloud_role" disabled><option value="">请选择</option><option>云服务商</option><option>云服务客户</option><option>二者均勾选</option></select></div>
-              <div class="form-row"><label>服务模式：</label><select id="cloud_service" disabled><option value="">请选择</option><option>IaaS</option><option>PaaS</option><option>SaaS</option></select></div>
-              <div class="form-row"><label>部署模式：</label><select id="cloud_deploy" disabled><option value="">请选择</option><option>私有云</option><option>公有云</option><option>混合云</option></select></div>
-              <div class="form-row"><label>云服务商：</label><input type="text" id="cloud_provider" disabled></div>
+              <div class="form-row"><label>服务模式：</label><select id="cloud_service" onchange="toggleOtherInput(this,'cloud_service_other')" disabled><option value="">请选择</option><option>IaaS</option><option>PaaS</option><option>SaaS</option><option>其他</option></select><input type="text" id="cloud_service_other" placeholder="请填写其他服务模式" style="display:none;width:220px;" disabled></div>
+              <div class="form-row"><label>部署模式：</label><select id="cloud_deploy" onchange="toggleOtherInput(this,'cloud_deploy_other')" disabled><option value="">请选择</option><option>私有云</option><option>公有云</option><option>混合云</option><option>其他</option></select><input type="text" id="cloud_deploy_other" placeholder="请填写其他部署模式" style="display:none;width:220px;" disabled></div>
+              <div class="form-row"><label>预置字典：</label><select id="cloud_provider_kind" onchange="refreshCloudPresetOptions()" disabled><option value="cloud_vendor">云服务商</option><option value="hosting_room">第三方托管机房</option><option value="manual">手动填写</option></select><select id="cloud_provider_preset" onchange="applyCloudPreset()" disabled><option value="">请选择</option></select></div>
+              <div class="form-row"><label>云服务商/机房：</label><input type="text" id="cloud_provider" disabled></div>
+              <div class="form-row"><label>云服务商规模：</label><input type="text" id="cloud_provider_scale" placeholder="如 12 个云服务客户" disabled></div>
+              <div class="form-row"><label>基础设施地点：</label><input type="text" id="cloud_infra_location" disabled></div>
+              <div class="form-row"><label>平台运维地点：</label><input type="text" id="cloud_ops_location" disabled></div>
               <div class="form-row"><label>平台等级：</label><input type="text" id="cloud_plat_level" disabled></div>
               <div class="form-row"><label>平台名称：</label><input type="text" id="cloud_plat_name" disabled></div>
               <div class="form-row"><label>备案编号：</label><input type="text" id="cloud_plat_code" disabled></div>
-              <div class="form-row"><label>运维地点：</label><input type="text" id="cloud_ops" disabled></div>
+              <div class="form-row"><label>客户运维地点：</label><input type="text" id="cloud_ops" disabled></div>
             </div>
           </div>
 
@@ -395,16 +408,16 @@
             <div class="form-row"><label>安全责任部门：</label><input type="text" id="data_sec_dept"></div>
             <div class="form-row"><label>安全负责人：</label><input type="text" id="data_sec_person"></div>
             <div class="form-row"><label>个人信息：</label><select id="personal_info"><option value="">请选择</option><option>1-涉及敏感个人信息</option><option>2-涉及未成年人个人信息</option><option>3-涉及一般个人信息</option><option>4-不涉及</option></select></div>
-            <div class="form-row"><label>数据总量：</label><input type="text" id="total_size" placeholder="如 30"><span style="color:var(--text-sec);">GB</span></div>
-            <div class="form-row"><label>月增长量：</label><input type="text" id="monthly_growth" placeholder="如 1"><span style="color:var(--text-sec);">GB</span></div>
+            <div class="form-row"><label>数据总量：</label><div class="inline-group"><label>GB</label><input type="text" id="total_size" placeholder="如 30"><label>TB</label><input type="text" id="total_size_tb" placeholder="如 0"><label>万条</label><input type="text" id="total_size_records" placeholder="如 2"></div></div>
+            <div class="form-row"><label>月增长量：</label><div class="inline-group"><label>GB</label><input type="text" id="monthly_growth" placeholder="如 1"><label>TB</label><input type="text" id="monthly_growth_tb" placeholder="如 0"></div></div>
             <hr style="border-color:var(--border);margin:12px 0;">
-            <div class="form-row"><label>数据来源：</label><select id="data_source"><option value="">请选择</option><option>1-本单位内部产生</option><option>2-外部采集</option><option>3-二者均有</option><option>9-其他</option></select></div>
-            <div class="form-row"><label>数据来源单位：</label><input type="text" id="inflow_units" placeholder="数据流入的来源单位（如无则留空）"></div>
-            <div class="form-row"><label>数据流出单位：</label><input type="text" id="outflow_units" placeholder="数据流出的目标单位（如无则留空）"></div>
-            <div class="form-row"><label>存储位置：</label><select id="storage_type" onchange="onStorageTypeChange()"><option value="">请选择</option><option>非云计算平台</option><option>云计算平台</option></select></div>
-            <div class="form-row" id="storage_room_row" style="display:none;"><label>机房位置：</label><select id="storage_room"><option value="">请选择</option><option>本单位机房</option><option>外单位机房</option><option>国内第三方托管机房</option></select></div>
-            <div class="form-row" id="storage_cloud_row" style="display:none;"><label>云平台名称：</label><input type="text" id="storage_cloud" placeholder="如 阿里云"></div>
-            <div class="form-row"><label>数据位置：</label><select id="storage_region"><option>境内</option><option>境外</option><option>二者均有</option></select></div>
+            <div class="form-row"><label>数据来源：</label><div class="checkbox-row checkbox-wrap"><label><input type="checkbox" id="data_source_collect"> 1-系统采集</label><label><input type="checkbox" id="data_source_generate"> 2-系统产生</label><label><input type="checkbox" id="data_source_manual"> 3-人工填报</label><label><input type="checkbox" id="data_source_trade"> 4-交易购买</label><label><input type="checkbox" id="data_source_share"> 5-共享交换</label><label><input type="checkbox" id="data_source_other_chk" onchange="toggleCheckboxOther(this,'data_source_other')"> 9-其他</label><input type="text" id="data_source_other" placeholder="请填写其他来源" style="display:none;width:220px;"></div></div>
+            <div class="form-row"><label>数据来源单位：</label><textarea id="inflow_units" rows="3" placeholder="每行一个来源单位，最多可填 3 个"></textarea></div>
+            <div class="form-row"><label>数据流出单位：</label><textarea id="outflow_units" rows="3" placeholder="每行一个流出单位，最多可填 3 个"></textarea></div>
+            <div class="form-row"><label>与其他处理者交互：</label><select id="interaction" onchange="toggleInteractionFields()"><option value="">请选择</option><option>1-对外提供给</option><option>2-委托处理</option><option>3-共同处理</option><option>4-无交互</option></select><input type="text" id="interaction_other" placeholder="请填写对方名称/具体方式" style="display:none;width:240px;"></div>
+            <div class="form-row"><label>存储位置-类别：</label><select id="storage_type" onchange="onStorageTypeChange()"><option value="">请选择</option><option>1-私有云</option><option>2-公有云</option><option>3-混合云</option><option>4-政务云</option><option>5-非云计算平台</option></select><input type="text" id="storage_cloud_name" placeholder="请填写平台/位置名称" style="width:240px;"></div>
+            <div class="form-row"><label>存储位置-机房：</label><select id="storage_room"><option value="">请选择</option><option>1-本单位机房</option><option>2-外单位机房</option><option>3-国内第三方托管机房</option></select><input type="text" id="storage_room_name" placeholder="请填写机房名称/地址" style="width:240px;"></div>
+            <div class="form-row"><label>存储位置-区域：</label><select id="storage_region"><option value="">请选择</option><option>1-境内</option><option>2-境外</option></select><input type="text" id="storage_region_name" placeholder="请填写国家/地区/城市" style="width:240px;"></div>
           </div>
         </div>
 
@@ -484,6 +497,21 @@
 let currentStep = 0;
 const changeLog = [];
 window.__DEV_MODE__ = {{ 'true' if dev_mode else 'false' }};
+const CLOUD_PROVIDER_PRESETS = {
+  cloud_vendor: {
+    aliyun: {name: '阿里云', platform_level: '三级', platform_name: '阿里云飞天云平台', platform_code: '待核实', client_ops_location: '杭州', infra_location: '杭州/张北等多地', ops_location: '杭州'},
+    tencent: {name: '腾讯云', platform_level: '三级', platform_name: '腾讯云平台', platform_code: '待核实', client_ops_location: '广州', infra_location: '广州/上海等多地', ops_location: '广州'},
+    huawei: {name: '华为云', platform_level: '三级', platform_name: '华为云平台', platform_code: '待核实', client_ops_location: '贵安/东莞', infra_location: '贵安/乌兰察布等多地', ops_location: '贵安/东莞'},
+    ctyun: {name: '天翼云', platform_level: '三级', platform_name: '天翼云平台', platform_code: '待核实', client_ops_location: '北京/上海', infra_location: '北京/上海等多地', ops_location: '北京/上海'},
+    ucloud: {name: 'UCloud', platform_level: '三级', platform_name: 'UCloud 云平台', platform_code: '待核实', client_ops_location: '上海', infra_location: '上海/广州', ops_location: '上海'},
+  },
+  hosting_room: {
+    chinatelecom: {name: '中国电信机房', platform_level: '三级', platform_name: '中国电信数据中心', platform_code: '待核实', client_ops_location: '按机房所在地填写', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
+    chinaunicom: {name: '中国联通机房', platform_level: '三级', platform_name: '中国联通数据中心', platform_code: '待核实', client_ops_location: '按机房所在地填写', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
+    chinamobile: {name: '中国移动机房', platform_level: '三级', platform_name: '中国移动数据中心', platform_code: '待核实', client_ops_location: '按机房所在地填写', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
+    local: {name: '地方第三方托管机房', platform_level: '待核实', platform_name: '第三方托管机房', platform_code: '待核实', client_ops_location: '按机房所在地填写', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
+  },
+};
 
 // ── 系统文件/文件夹选择 ──
 async function browseDir(targetId) {
@@ -492,8 +520,14 @@ async function browseDir(targetId) {
     const data = await res.json();
     if (data.path) {
       document.getElementById(targetId).value = data.path;
-      // 选择项目目录后自动扫描
-      if (targetId === 'project_dir') scanDir();
+      if (targetId === 'project_dir') {
+        switchEntryMode('single');
+        scanDir();
+      }
+      if (targetId === 'batch_root_dir') {
+        switchEntryMode('batch');
+        scanBatchRoot();
+      }
     }
   } catch(e) { console.log('browse error:', e); }
 }
@@ -501,7 +535,13 @@ async function browseFile(targetId, types='doc') {
   try {
     const res = await fetch('/api/browse_file', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({types})});
     const data = await res.json();
-    if (data.path) document.getElementById(targetId).value = data.path;
+    if (data.path) {
+      document.getElementById(targetId).value = data.path;
+      if (targetId === 'manifest_file') {
+        switchEntryMode('batch');
+        importBatchManifest();
+      }
+    }
   } catch(e) { console.log('browse error:', e); }
 }
 async function browseImage(targetId) {
@@ -510,6 +550,11 @@ async function browseImage(targetId) {
     const data = await res.json();
     if (data.path) document.getElementById(targetId).value = data.path;
   } catch(e) { console.log('browse error:', e); }
+}
+
+function switchEntryMode(mode) {
+  document.querySelectorAll('.mode-tab').forEach(el => el.classList.toggle('active', el.dataset.modeTab === mode));
+  document.querySelectorAll('.mode-panel').forEach(el => el.classList.toggle('active', el.id === `mode-${mode}`));
 }
 
 // ── 步骤导航 ──
@@ -727,15 +772,31 @@ function fillBeianData(d) {
     syncTechToScenario();
   }
   // 业务类型 select
-  if (t.biz_type) { const el = document.getElementById('biz_type'); for (let o of el.options) { if (o.value.startsWith(t.biz_type+'-') || o.value === t.biz_type || o.value.startsWith(t.biz_type)) { el.value = o.value; break; } } }
+  if (t.biz_type) { const el = document.getElementById('biz_type'); for (let o of el.options) { if (o.value.startsWith(t.biz_type+'-') || o.value === t.biz_type || o.value.startsWith(t.biz_type) || t.biz_type.includes(o.text)) { el.value = o.value; break; } } }
+  setField('biz_type_other', t.biz_type_other);
+  toggleOtherInput(document.getElementById('biz_type'), 'biz_type_other');
   // 服务范围 select
-  if (t.service_scope) { const el = document.getElementById('svc_scope'); for (let o of el.options) { if (o.value.startsWith(t.service_scope+'-') || o.value === t.service_scope || o.value.startsWith(t.service_scope)) { el.value = o.value; break; } } }
+  if (t.service_scope) { const el = document.getElementById('svc_scope'); for (let o of el.options) { if (o.value.startsWith(t.service_scope+'-') || o.value === t.service_scope || o.value.startsWith(t.service_scope) || t.service_scope.includes(o.text)) { el.value = o.value; break; } } }
+  setField('svc_scope_other', t.service_scope_other);
+  toggleOtherInput(document.getElementById('svc_scope'), 'svc_scope_other');
   // 服务对象 select
-  if (t.service_target) { const el = document.getElementById('svc_target'); for (let o of el.options) { if (o.value.startsWith(t.service_target+'-') || o.value === t.service_target || o.value.startsWith(t.service_target)) { el.value = o.value; break; } } }
+  if (t.service_target) { const el = document.getElementById('svc_target'); for (let o of el.options) { if (o.value.startsWith(t.service_target+'-') || o.value === t.service_target || o.value.startsWith(t.service_target) || t.service_target.includes(o.text)) { el.value = o.value; break; } } }
+  setField('svc_target_other', t.service_target_other);
+  toggleOtherInput(document.getElementById('svc_target'), 'svc_target_other');
   // 部署范围 select
-  if (t.deploy_scope) { const el = document.getElementById('deploy_scope'); for (let o of el.options) { if (o.value.startsWith(t.deploy_scope+'-') || o.value === t.deploy_scope || o.value.startsWith(t.deploy_scope)) { el.value = o.value; break; } } }
+  if (t.deploy_scope) { const el = document.getElementById('deploy_scope'); for (let o of el.options) { if (o.value.startsWith(t.deploy_scope+'-') || o.value === t.deploy_scope || o.value.startsWith(t.deploy_scope) || t.deploy_scope.includes(o.text)) { el.value = o.value; break; } } }
+  setField('deploy_scope_other', t.deploy_scope_other);
+  toggleOtherInput(document.getElementById('deploy_scope'), 'deploy_scope_other');
   // 网络性质 select
-  if (t.network_type) { const el = document.getElementById('net_type'); for (let o of el.options) { if (o.value.startsWith(t.network_type+'-') || o.value === t.network_type || o.value.startsWith(t.network_type)) { el.value = o.value; break; } } }
+  if (t.network_type) { const el = document.getElementById('net_type'); for (let o of el.options) { if (o.value.startsWith(t.network_type+'-') || o.value === t.network_type || o.value.startsWith(t.network_type) || t.network_type.includes(o.text)) { el.value = o.value; break; } } }
+  setField('net_type_other', t.network_type_other);
+  setField('source_ip', t.source_ip);
+  setField('domain', t.domain);
+  setField('protocol_port', t.protocol_port);
+  onNetworkTypeChange();
+  if (t.interconnect) { const el = document.getElementById('interconnect'); for (let o of el.options) { if (o.value.startsWith(t.interconnect+'-') || o.value === t.interconnect || o.value.startsWith(t.interconnect) || t.interconnect.includes(o.text)) { el.value = o.value; break; } } }
+  setField('interconnect_other', t.interconnect_other);
+  toggleOtherInput(document.getElementById('interconnect'), 'interconnect_other');
   // 是否分系统
   if (t.is_subsystem) { document.getElementById('is_sub').value = t.is_subsystem === '是' ? '是' : '否'; }
 
@@ -760,12 +821,22 @@ function fillBeianData(d) {
   document.getElementById('cloud_enabled').checked = !!cloud.enabled;
   setField('cloud_role', cloud.role);
   setField('cloud_service', cloud.service_model);
+  setField('cloud_service_other', cloud.service_model_other);
   setField('cloud_deploy', cloud.deploy_model);
+  setField('cloud_deploy_other', cloud.deploy_model_other);
+  setField('cloud_provider_kind', cloud.provider_kind || 'cloud_vendor');
+  refreshCloudPresetOptions();
+  setField('cloud_provider_preset', cloud.provider_preset);
   setField('cloud_provider', cloud.provider_name);
+  setField('cloud_provider_scale', cloud.provider_scale);
+  setField('cloud_infra_location', cloud.infra_location);
+  setField('cloud_ops_location', cloud.ops_location);
   setField('cloud_plat_level', cloud.platform_level);
   setField('cloud_plat_name', cloud.platform_name);
   setField('cloud_plat_code', cloud.platform_code);
   setField('cloud_ops', cloud.client_ops_location);
+  toggleOtherInput(document.getElementById('cloud_service'), 'cloud_service_other');
+  toggleOtherInput(document.getElementById('cloud_deploy'), 'cloud_deploy_other');
 
   const mobile = s.mobile || {};
   document.getElementById('mobile_enabled').checked = !!mobile.enabled;
@@ -795,13 +866,25 @@ function fillBeianData(d) {
   setField('data_sec_dept', dd.data_dept);
   setField('data_sec_person', dd.data_person);
   setField('total_size', dd.total_size);
+  setField('total_size_tb', dd.total_size_tb);
+  setField('total_size_records', dd.total_size_records);
   setField('monthly_growth', dd.monthly_growth);
+  setField('monthly_growth_tb', dd.monthly_growth_tb);
   // 个人信息 select
   if (dd.personal_info) { const el = document.getElementById('personal_info'); for (let o of el.options) { if (o.value.startsWith(dd.personal_info+'-') || o.value === dd.personal_info || o.value.startsWith(dd.personal_info)) { el.value = o.value; break; } } }
-  // 数据来源
-  if (dd.data_source) { const el = document.getElementById('data_source'); if (el) { for (let o of el.options) { if (o.value.startsWith(dd.data_source+'-') || o.value === dd.data_source || o.value.startsWith(dd.data_source)) { el.value = o.value; break; } } } }
-  // 存储位置
-  if (dd.storage_region) { const el = document.getElementById('storage_region'); if (el) el.value = dd.storage_region; }
+  fillDataSource(dd.data_source, dd.data_source_other);
+  setField('inflow_units', dd.inflow_units);
+  setField('outflow_units', dd.outflow_units);
+  if (dd.interaction) { const el = document.getElementById('interaction'); for (let o of el.options) { if (o.value.startsWith(dd.interaction+'-') || o.value === dd.interaction || o.value.startsWith(dd.interaction)) { el.value = o.value; break; } } }
+  setField('interaction_other', dd.interaction_other);
+  toggleInteractionFields();
+  if (dd.storage_type) { const el = document.getElementById('storage_type'); for (let o of el.options) { if (o.value.startsWith(dd.storage_type+'-') || o.value === dd.storage_type || o.value.startsWith(dd.storage_type)) { el.value = o.value; break; } } }
+  if (dd.storage_room) { const el = document.getElementById('storage_room'); for (let o of el.options) { if (o.value.startsWith(dd.storage_room+'-') || o.value === dd.storage_room || o.value.startsWith(dd.storage_room)) { el.value = o.value; break; } } }
+  if (dd.storage_region) { const el = document.getElementById('storage_region'); for (let o of el.options) { if (o.value.startsWith(dd.storage_region+'-') || o.value === dd.storage_region || o.value.startsWith(dd.storage_region)) { el.value = o.value; break; } } }
+  setField('storage_cloud_name', dd.storage_cloud_name || dd.storage_cloud);
+  setField('storage_room_name', dd.storage_room_name);
+  setField('storage_region_name', dd.storage_region_name);
+  onStorageTypeChange();
 }
 
 function fillReportData(r) {
@@ -830,6 +913,43 @@ function setField(id, value) {
   else el.value = v;
   el.classList.add('auto-filled');
   addLog('自动填充', id.replace(/_/g,' '), '', v);
+}
+
+function fillDataSource(value, otherValue='') {
+  const tokens = (value || '').split(',').map(item => item.trim()).filter(Boolean);
+  const mapping = {
+    '1': 'data_source_collect',
+    '2': 'data_source_generate',
+    '3': 'data_source_manual',
+    '4': 'data_source_trade',
+    '5': 'data_source_share',
+    '9': 'data_source_other_chk',
+  };
+  Object.values(mapping).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.checked = false;
+  });
+  tokens.forEach(token => {
+    const key = token.split('-')[0];
+    const id = mapping[key];
+    if (id) document.getElementById(id).checked = true;
+  });
+  if (otherValue) {
+    document.getElementById('data_source_other_chk').checked = true;
+    setField('data_source_other', otherValue);
+  }
+  toggleCheckboxOther(document.getElementById('data_source_other_chk'), 'data_source_other');
+}
+
+function collectDataSource() {
+  const values = [];
+  if (document.getElementById('data_source_collect').checked) values.push('1-系统采集');
+  if (document.getElementById('data_source_generate').checked) values.push('2-系统产生');
+  if (document.getElementById('data_source_manual').checked) values.push('3-人工填报');
+  if (document.getElementById('data_source_trade').checked) values.push('4-交易购买');
+  if (document.getElementById('data_source_share').checked) values.push('5-共享交换');
+  if (document.getElementById('data_source_other_chk').checked) values.push('9-其他');
+  return values.join(',');
 }
 
 // ── 变更日志 ──
@@ -948,6 +1068,23 @@ function toggleOtherInput(selectEl, inputId) {
   if (!isOther) input.value = '';
 }
 
+function toggleCheckboxOther(checkboxEl, inputId) {
+  const input = document.getElementById(inputId);
+  input.style.display = checkboxEl.checked ? '' : 'none';
+  if (!checkboxEl.checked) input.value = '';
+}
+
+function onNetworkTypeChange() {
+  const selectEl = document.getElementById('net_type');
+  toggleOtherInput(selectEl, 'net_type_other');
+  const isInternet = selectEl.value.startsWith('2-') || selectEl.value === '2-互联网';
+  ['source_ip', 'domain', 'protocol_port'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.display = isInternet ? '' : 'none';
+    if (!isInternet) el.value = '';
+  });
+}
+
 function syncTechToScenario() {
   // 表二技术类型勾选 → 表四应用场景自动勾选
   const map = {cloud:'cloud_enabled', mobile:'mobile_enabled', iot:'iot_enabled', ics:'ics_enabled', bigdata:'bigdata_enabled'};
@@ -963,13 +1100,60 @@ function syncTechToScenario() {
 
 function onStorageTypeChange() {
   const type = document.getElementById('storage_type').value;
-  document.getElementById('storage_room_row').style.display = (type === '非云计算平台') ? '' : 'none';
-  document.getElementById('storage_cloud_row').style.display = (type === '云计算平台') ? '' : 'none';
+  const cloudName = document.getElementById('storage_cloud_name');
+  cloudName.placeholder = type && !type.startsWith('5-')
+    ? '请填写云平台名称/实例位置'
+    : '请填写平台/位置名称';
 }
 
 function onSupervisorChange() {
   const has = document.getElementById('has_supervisor').checked;
   document.getElementById('supervisor_review_row').style.display = has ? '' : 'none';
+  const input = document.getElementById('supervisor_name');
+  if (!has) {
+    input.value = '/';
+  } else if (input.value.trim() === '/') {
+    input.value = '';
+  }
+}
+
+function toggleInteractionFields() {
+  const selectEl = document.getElementById('interaction');
+  const input = document.getElementById('interaction_other');
+  const needsText = !!selectEl.value && !selectEl.value.startsWith('4-');
+  input.style.display = needsText ? '' : 'none';
+  input.placeholder = selectEl.value.startsWith('1-') ? '请填写对外提供对象'
+    : selectEl.value.startsWith('2-') ? '请填写受托方名称'
+    : selectEl.value.startsWith('3-') ? '请填写共同处理方名称'
+    : '请填写具体情况';
+  if (!needsText) input.value = '';
+}
+
+function refreshCloudPresetOptions() {
+  const kind = document.getElementById('cloud_provider_kind').value;
+  const preset = document.getElementById('cloud_provider_preset');
+  const current = preset.value;
+  const options = CLOUD_PROVIDER_PRESETS[kind] || {};
+  preset.innerHTML = '<option value="">请选择</option>' + Object.entries(options)
+    .map(([key, item]) => `<option value="${key}">${item.name}</option>`)
+    .join('');
+  if (current && Object.prototype.hasOwnProperty.call(options, current)) {
+    preset.value = current;
+  }
+}
+
+function applyCloudPreset() {
+  const kind = document.getElementById('cloud_provider_kind').value;
+  const key = document.getElementById('cloud_provider_preset').value;
+  const preset = (CLOUD_PROVIDER_PRESETS[kind] || {})[key];
+  if (!preset) return;
+  document.getElementById('cloud_provider').value = preset.name || '';
+  document.getElementById('cloud_plat_level').value = preset.platform_level || '';
+  document.getElementById('cloud_plat_name').value = preset.platform_name || '';
+  document.getElementById('cloud_plat_code').value = preset.platform_code || '';
+  document.getElementById('cloud_ops').value = preset.client_ops_location || '';
+  document.getElementById('cloud_infra_location').value = preset.infra_location || '';
+  document.getElementById('cloud_ops_location').value = preset.ops_location || '';
 }
 
 function showAlert(containerId, msg, type) {
@@ -983,25 +1167,44 @@ let highlightMode = false;
 function toggleHighlightMode() {
   highlightMode = document.getElementById('highlight_mode').checked;
   document.body.style.cursor = highlightMode ? 'crosshair' : '';
+  document.querySelectorAll('.highlight-btn').forEach(btn => {
+    btn.style.display = highlightMode ? 'inline-flex' : 'none';
+  });
 }
 
-document.addEventListener('click', function(e) {
-  if (!highlightMode) return;
-  const el = e.target;
-  if (el.tagName === 'INPUT' && el.type === 'text' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
-    e.preventDefault();
-    e.stopPropagation();
-    const id = el.id;
-    if (!id) return;
-    if (highlightedFields.has(id)) {
-      highlightedFields.delete(id);
-      el.classList.remove('highlight-yellow');
-    } else {
-      highlightedFields.add(id);
-      el.classList.add('highlight-yellow');
-    }
-  }
-}, true);
+function initHighlightButtons() {
+  document.querySelectorAll('#panel-1 .form-row').forEach(row => {
+    const fields = Array.from(row.querySelectorAll('input[type="text"], textarea, select'))
+      .map(el => el.id)
+      .filter(Boolean)
+      .filter(id => !['project_dir', 'batch_root_dir', 'manifest_file', 'beian_template', 'report_template', 'old_beian', 'old_report', 'survey', 'output_dir'].includes(id));
+    if (!fields.length || row.querySelector('.highlight-btn')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'highlight-btn';
+    btn.textContent = '标黄';
+    btn.style.display = 'none';
+    btn.dataset.targets = fields.join(',');
+    btn.addEventListener('click', event => {
+      event.preventDefault();
+      const targetIds = (btn.dataset.targets || '').split(',').filter(Boolean);
+      const allSelected = targetIds.every(id => highlightedFields.has(id));
+      targetIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (allSelected) {
+          highlightedFields.delete(id);
+          el.classList.remove('highlight-yellow');
+        } else {
+          highlightedFields.add(id);
+          el.classList.add('highlight-yellow');
+        }
+      });
+      btn.classList.toggle('active', !allSelected);
+    });
+    row.appendChild(btn);
+  });
+}
 
 // ── 收集表单数据 ──
 function collectTechTypes() {
@@ -1052,12 +1255,21 @@ function collectFormData() {
       target_type: document.getElementById('target_type').value,
       tech_type: collectTechTypes(),
       biz_type: document.getElementById('biz_type').value,
+      biz_type_other: document.getElementById('biz_type_other').value,
       biz_desc: document.getElementById('biz_desc').value,
       service_scope: document.getElementById('svc_scope').value,
+      service_scope_other: document.getElementById('svc_scope_other').value,
       service_target: document.getElementById('svc_target').value,
+      service_target_other: document.getElementById('svc_target_other').value,
       deploy_scope: document.getElementById('deploy_scope').value,
+      deploy_scope_other: document.getElementById('deploy_scope_other').value,
       network_type: document.getElementById('net_type').value,
+      network_type_other: document.getElementById('net_type_other').value,
+      source_ip: document.getElementById('source_ip').value,
+      domain: document.getElementById('domain').value,
+      protocol_port: document.getElementById('protocol_port').value,
       interconnect: document.getElementById('interconnect').value,
+      interconnect_other: document.getElementById('interconnect_other').value,
       run_date: document.getElementById('run_date').value,
       is_subsystem: document.getElementById('is_sub').value,
       parent_system: document.getElementById('parent_sys').value,
@@ -1083,7 +1295,14 @@ function collectFormData() {
         enabled: document.getElementById('cloud_enabled').checked,
         role: document.getElementById('cloud_role').value,
         service_model: document.getElementById('cloud_service').value,
+        service_model_other: document.getElementById('cloud_service_other').value,
         deploy_model: document.getElementById('cloud_deploy').value,
+        deploy_model_other: document.getElementById('cloud_deploy_other').value,
+        provider_scale: document.getElementById('cloud_provider_scale').value,
+        infra_location: document.getElementById('cloud_infra_location').value,
+        ops_location: document.getElementById('cloud_ops_location').value,
+        provider_preset: document.getElementById('cloud_provider_preset').value,
+        provider_kind: document.getElementById('cloud_provider_kind').value,
         provider_name: document.getElementById('cloud_provider').value,
         platform_level: document.getElementById('cloud_plat_level').value,
         platform_name: document.getElementById('cloud_plat_name').value,
@@ -1128,13 +1347,23 @@ function collectFormData() {
       data_person: document.getElementById('data_sec_person').value,
       personal_info: document.getElementById('personal_info').value,
       total_size: document.getElementById('total_size').value,
+      total_size_tb: document.getElementById('total_size_tb').value,
+      total_size_records: document.getElementById('total_size_records').value,
       monthly_growth: document.getElementById('monthly_growth').value,
-      data_source: document.getElementById('data_source') ? document.getElementById('data_source').value : '',
-      inflow_units: document.getElementById('inflow_units') ? document.getElementById('inflow_units').value : '',
-      outflow_units: document.getElementById('outflow_units') ? document.getElementById('outflow_units').value : '',
-      storage_cloud: document.getElementById('storage_cloud') ? document.getElementById('storage_cloud').value : '',
-      storage_room: document.getElementById('storage_room') ? document.getElementById('storage_room').value : '',
-      storage_region: document.getElementById('storage_region') ? document.getElementById('storage_region').value : '',
+      monthly_growth_tb: document.getElementById('monthly_growth_tb').value,
+      data_source: collectDataSource(),
+      data_source_other: document.getElementById('data_source_other').value,
+      inflow_units: document.getElementById('inflow_units').value,
+      outflow_units: document.getElementById('outflow_units').value,
+      interaction: document.getElementById('interaction').value,
+      interaction_other: document.getElementById('interaction_other').value,
+      storage_type: document.getElementById('storage_type').value,
+      storage_cloud: document.getElementById('storage_type').value,
+      storage_cloud_name: document.getElementById('storage_cloud_name').value,
+      storage_room: document.getElementById('storage_room').value,
+      storage_room_name: document.getElementById('storage_room_name').value,
+      storage_region: document.getElementById('storage_region').value,
+      storage_region_name: document.getElementById('storage_region_name').value,
     },
     highlighted_fields: Array.from(highlightedFields),
   };
@@ -1220,6 +1449,15 @@ function showModal(msg) {
 function closeModal() {
   document.getElementById('modal-overlay').style.display = 'none';
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  initHighlightButtons();
+  refreshCloudPresetOptions();
+  onNetworkTypeChange();
+  onStorageTypeChange();
+  onSupervisorChange();
+  toggleInteractionFields();
+});
 </script>
 <script src="/static/batch.js?v=1"></script>
 {% if dev_mode %}

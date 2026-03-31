@@ -80,6 +80,21 @@ body {
   gap: 0;
   margin-bottom: 20px;
 }
+.mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.mode-tab {
+  min-width: 96px;
+}
+.mode-tab.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.mode-panel { display: none; }
+.mode-panel.active { display: block; }
 .step-item {
   padding: 6px 20px;
   border-radius: var(--radius);
@@ -203,6 +218,7 @@ button:hover { background: var(--surface-hover); border-color: var(--text-sec); 
 
 /* ── 复选框 ── */
 .checkbox-row { display: flex; align-items: center; gap: 6px; }
+.checkbox-wrap { flex-wrap: wrap; }
 input[type="checkbox"] {
   width: 16px; height: 16px;
   accent-color: var(--primary);
@@ -489,6 +505,7 @@ input[type="checkbox"] {
   cursor: pointer;
   margin-left: 4px;
   flex-shrink: 0;
+  align-self: center;
 }
 .highlight-btn.active {
   background: #ffd700;

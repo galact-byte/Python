@@ -56,15 +56,21 @@ class TargetInfo:
     target_type: str = ""              # 类型（通信网络设施/信息系统/数据资源）
     tech_type: str = ""                # 采用技术（云计算/移动互联/物联网/工控/大数据）
     biz_type: str = ""                 # 业务类型
+    biz_type_other: str = ""           # 业务类型其他说明
     biz_desc: str = ""                 # 业务描述
     service_scope: str = ""            # 服务范围
+    service_scope_other: str = ""      # 服务范围其他说明
     service_target: str = ""           # 服务对象
+    service_target_other: str = ""     # 服务对象其他说明
     deploy_scope: str = ""             # 部署范围
+    deploy_scope_other: str = ""       # 部署范围其他说明
     network_type: str = ""             # 网络性质
+    network_type_other: str = ""       # 网络性质其他说明
     source_ip: str = ""                # 源站IP
     domain: str = ""                   # 域名
     protocol_port: str = ""            # 协议/端口
     interconnect: str = ""             # 网络互联情况
+    interconnect_other: str = ""       # 网络互联情况其他说明
     run_date: str = ""                 # 投入运行时间
     is_subsystem: str = ""             # 是否分系统
     parent_system: str = ""            # 上级系统名称
@@ -96,10 +102,14 @@ class CloudInfo:
     enabled: bool = False
     role: str = ""                     # 云服务商/云服务客户
     service_model: str = ""            # IaaS/PaaS/SaaS
+    service_model_other: str = ""      # 服务模式其他说明
     deploy_model: str = ""             # 私有云/公有云/混合云
+    deploy_model_other: str = ""       # 部署模式其他说明
     provider_scale: str = ""           # 云服务客户数量
     infra_location: str = ""           # 基础设施地点
     ops_location: str = ""             # 运维地点
+    provider_preset: str = ""          # 预置服务商/机房字典键
+    provider_kind: str = ""            # 云服务商/第三方托管机房/手动填写
     provider_name: str = ""            # 云服务商名称
     platform_level: str = ""           # 平台安全等级
     platform_name: str = ""            # 平台名称
@@ -187,14 +197,23 @@ class DataInfo:
     data_person: str = ""              # 数据安全负责人
     personal_info: str = ""            # 个人信息涉及情况
     total_size: str = ""               # 数据总量
+    total_size_tb: str = ""            # 数据总量TB
+    total_size_records: str = ""       # 数据总量万条
     monthly_growth: str = ""           # 月增长量
+    monthly_growth_tb: str = ""        # 月增长量TB
     data_source: str = ""              # 数据来源
+    data_source_other: str = ""        # 数据来源其他说明
     inflow_units: str = ""             # 数据来源单位
     outflow_units: str = ""            # 数据流出单位
     interaction: str = ""              # 与其他处理者交互
+    interaction_other: str = ""        # 与其他处理者交互其他说明
+    storage_type: str = ""             # 存储位置类型主分类
     storage_cloud: str = ""            # 云存储位置
+    storage_cloud_name: str = ""       # 云存储位置名称
     storage_room: str = ""             # 机房存储位置
+    storage_room_name: str = ""        # 机房存储位置名称
     storage_region: str = ""           # 境内/境外
+    storage_region_name: str = ""      # 区域位置名称
 
 
 @dataclass
