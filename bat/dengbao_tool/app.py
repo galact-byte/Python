@@ -684,12 +684,18 @@ def _dict_to_project_data(d):
     g = d.get("grading", {})
     data.grading = GradingInfo(
         biz_level=g.get("biz_level", "第二级"), service_level=g.get("service_level", "第二级"),
+        biz_level_items=g.get("biz_level_items", []),
+        service_level_items=g.get("service_level_items", []),
         final_level=g.get("final_level", "第二级"), grading_date=g.get("grading_date", ""),
         has_report=g.get("has_report", True), report_name=g.get("report_name", ""),
         has_review=g.get("has_review", True), review_name=g.get("review_name", ""),
         has_supervisor=g.get("has_supervisor", False),
         supervisor_name=g.get("supervisor_name", ""),
         supervisor_reviewed=g.get("supervisor_reviewed", False),
+        supervisor_review_status=g.get(
+            "supervisor_review_status",
+            "已审核" if g.get("supervisor_reviewed", False) else "未审核"
+        ),
         supervisor_doc=g.get("supervisor_doc", ""),
         filler=g.get("filler", ""), fill_date=g.get("fill_date", ""),
     )
@@ -713,6 +719,7 @@ def _dict_to_project_data(d):
             platform_name=s.get("cloud", {}).get("platform_name", ""),
             platform_code=s.get("cloud", {}).get("platform_code", ""),
             client_ops_location=s.get("cloud", {}).get("client_ops_location", ""),
+            platform_cert=s.get("cloud", {}).get("platform_cert", ""),
         ),
         mobile=MobileInfo(
             enabled=s.get("mobile", {}).get("enabled", False),
@@ -752,9 +759,13 @@ def _dict_to_project_data(d):
         data_name=dd.get("data_name", ""), data_level=dd.get("data_level", ""),
         data_category=dd.get("data_category", ""), data_dept=dd.get("data_dept", ""),
         data_person=dd.get("data_person", ""), personal_info=dd.get("personal_info", ""),
-        total_size=dd.get("total_size", ""), total_size_tb=dd.get("total_size_tb", ""),
+        total_size=dd.get("total_size", ""),
+        total_size_unit=dd.get("total_size_unit", "GB"),
+        total_size_tb=dd.get("total_size_tb", ""),
         total_size_records=dd.get("total_size_records", ""),
-        monthly_growth=dd.get("monthly_growth", ""), monthly_growth_tb=dd.get("monthly_growth_tb", ""),
+        monthly_growth=dd.get("monthly_growth", ""),
+        monthly_growth_unit=dd.get("monthly_growth_unit", "GB"),
+        monthly_growth_tb=dd.get("monthly_growth_tb", ""),
         data_source=dd.get("data_source", ""), data_source_other=dd.get("data_source_other", ""),
         inflow_units=dd.get("inflow_units", ""), outflow_units=dd.get("outflow_units", ""),
         interaction=dd.get("interaction", ""), interaction_other=dd.get("interaction_other", ""),

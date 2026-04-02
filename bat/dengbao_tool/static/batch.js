@@ -24,10 +24,10 @@ const PERSISTED_FIELD_IDS = [
   'deploy_scope', 'deploy_scope_other', 'net_type', 'net_type_other', 'source_ip', 'domain', 'protocol_port',
   'interconnect', 'interconnect_other', 'run_date', 'is_sub', 'parent_sys', 'parent_unit',
   'biz_level', 'svc_level', 'grading_date', 'has_report', 'report_name', 'has_review', 'review_name',
-  'has_supervisor', 'supervisor_name', 'supervisor_reviewed', 'filler', 'fill_date',
+  'has_supervisor', 'supervisor_name', 'supervisor_review_status', 'supervisor_doc', 'filler', 'fill_date',
   'cloud_enabled', 'cloud_role', 'cloud_service', 'cloud_service_other', 'cloud_deploy', 'cloud_deploy_other',
-  'cloud_provider_kind', 'cloud_provider_preset', 'cloud_provider', 'cloud_provider_scale',
-  'cloud_infra_location', 'cloud_ops_location', 'cloud_plat_level', 'cloud_plat_name', 'cloud_plat_code', 'cloud_ops',
+  'cloud_provider_kind', 'cloud_provider_preset', 'cloud_provider', 'cloud_provider_client', 'cloud_provider_scale',
+  'cloud_infra_location', 'cloud_ops_location', 'cloud_plat_level', 'cloud_plat_name', 'cloud_plat_code', 'cloud_ops', 'cloud_platform_cert',
   'mobile_enabled', 'mobile_app', 'mobile_wireless', 'mobile_terminal',
   'iot_enabled', 'iot_perception', 'iot_transport',
   'ics_enabled', 'ics_layer', 'ics_comp',
@@ -35,7 +35,7 @@ const PERSISTED_FIELD_IDS = [
   'att_topology', 'att_topology_name', 'att_org', 'att_org_name', 'att_design', 'att_design_name',
   'att_product', 'att_product_name', 'att_service', 'att_service_name', 'att_supervisor', 'att_supervisor_name',
   'data_name_field', 'data_level', 'data_category', 'data_sec_dept', 'data_sec_person',
-  'personal_info', 'total_size', 'total_size_tb', 'total_size_records', 'monthly_growth', 'monthly_growth_tb',
+  'personal_info', 'total_size_unit', 'total_size_value', 'total_size_records', 'monthly_growth_unit', 'monthly_growth_value',
   'data_source_collect', 'data_source_generate', 'data_source_manual', 'data_source_trade', 'data_source_share',
   'data_source_other_chk', 'data_source_other', 'inflow_units', 'outflow_units', 'interaction', 'interaction_other',
   'storage_type', 'storage_cloud_name', 'storage_room', 'storage_room_name', 'storage_region', 'storage_region_name',
@@ -737,6 +737,8 @@ function collectUiState() {
     state[id] = el.type === 'checkbox' ? !!el.checked : el.value;
   });
   state.final_level = document.getElementById('final_level').textContent;
+  state.biz_level_items = typeof collectLevelItems === 'function' ? collectLevelItems('biz') : [];
+  state.service_level_items = typeof collectLevelItems === 'function' ? collectLevelItems('svc') : [];
   state.highlighted_fields = Array.from(highlightedFields);
   return state;
 }
@@ -759,6 +761,10 @@ function applyUiState(state) {
   if (state.final_level) {
     document.getElementById('final_level').textContent = state.final_level;
   }
+  if (typeof renderLevelCheckOptions === 'function') {
+    renderLevelCheckOptions('biz', state.biz_level_items || []);
+    renderLevelCheckOptions('svc', state.service_level_items || []);
+  }
   applyHighlightedFields(state.highlighted_fields || []);
   onTargetTypeChange();
   onNetworkTypeChange();
@@ -770,6 +776,12 @@ function applyUiState(state) {
     document.getElementById('cloud_provider_preset').value = state.cloud_provider_preset || '';
   }
   onSupervisorChange();
+  if (typeof onSupervisorReviewStatusChange === 'function') {
+    onSupervisorReviewStatusChange();
+  }
+  if (typeof onCloudRoleChange === 'function') {
+    onCloudRoleChange();
+  }
   onStorageTypeChange();
   toggleInteractionFields();
   ['cloud', 'mobile', 'iot', 'ics', 'bigdata'].forEach(toggleSection);

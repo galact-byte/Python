@@ -81,7 +81,9 @@ class TargetInfo:
 class GradingInfo:
     """定级等级信息（备案表 表4）"""
     biz_level: str = "第二级"           # 业务信息安全保护等级
+    biz_level_items: list = field(default_factory=list)  # 业务信息等级对应勾选项
     service_level: str = "第二级"       # 系统服务安全保护等级
+    service_level_items: list = field(default_factory=list)  # 系统服务等级对应勾选项
     final_level: str = "第二级"         # 最终安全保护等级
     grading_date: str = ""             # 定级时间
     has_report: bool = True            # 有定级报告
@@ -91,6 +93,7 @@ class GradingInfo:
     has_supervisor: bool = False       # 有上级行业主管部门
     supervisor_name: str = ""          # 主管部门名称
     supervisor_reviewed: bool = False  # 主管部门已审核
+    supervisor_review_status: str = "未审核"  # 上级主管部门审核状态
     supervisor_doc: str = ""           # 审核附件
     filler: str = ""                   # 填表人
     fill_date: str = ""                # 填表日期
@@ -197,9 +200,11 @@ class DataInfo:
     data_person: str = ""              # 数据安全负责人
     personal_info: str = ""            # 个人信息涉及情况
     total_size: str = ""               # 数据总量
+    total_size_unit: str = "GB"        # 数据总量单位
     total_size_tb: str = ""            # 数据总量TB
     total_size_records: str = ""       # 数据总量万条
     monthly_growth: str = ""           # 月增长量
+    monthly_growth_unit: str = "GB"    # 月增长量单位
     monthly_growth_tb: str = ""        # 月增长量TB
     data_source: str = ""              # 数据来源
     data_source_other: str = ""        # 数据来源其他说明

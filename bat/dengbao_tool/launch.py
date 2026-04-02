@@ -74,7 +74,20 @@ def start_app(dev_mode: bool = False):
     webbrowser.open("http://localhost:5000")
 
     try:
-        proc.wait()
+        if dev_mode:
+            proc.wait()
+            stdout_data, stderr_data = None, None
+        else:
+            stdout_data, stderr_data = proc.communicate()
+        if proc.returncode and not dev_mode:
+            print("\n[X] Flask 启动失败，退出码:", proc.returncode)
+            if stdout_data:
+                print("\n--- stdout ---")
+                print(stdout_data.decode("utf-8", errors="replace") if isinstance(stdout_data, bytes) else stdout_data)
+            if stderr_data:
+                print("\n--- stderr ---")
+                print(stderr_data.decode("utf-8", errors="replace") if isinstance(stderr_data, bytes) else stderr_data)
+            sys.exit(proc.returncode)
     except KeyboardInterrupt:
         proc.terminate()
         print("\n已停止")

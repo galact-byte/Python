@@ -2,13 +2,14 @@
 
 import os
 import shutil
+import re
 from docx import Document
-from docx.shared import Inches, RGBColor
+from docx.shared import Inches, RGBColor, Pt
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from models.project_data import ProjectData, ReportInfo
 from core.format_style import (
-    set_cell_text, FONT_FANG_GB, SIZE_TABLE, _set_east_asia_font
+    set_cell_text, FONT_FANG_GB, FONT_SONG, SIZE_TABLE, _set_east_asia_font
 )
 
 
@@ -29,6 +30,69 @@ def _highlight_cell(cell, color="yellow"):
     for para in cell.paragraphs:
         for run in para.runs:
             _highlight_run(run, color)
+
+
+def _apply_fill_style(run):
+    """统一填写内容样式为宋体五号。"""
+    if run is None:
+        return
+    run.font.name = FONT_SONG
+    run.font.size = Pt(10.5)
+    _set_east_asia_font(run, FONT_SONG)
+
+
+def _set_run_text(run, text):
+    run.text = text
+    _apply_fill_style(run)
+
+
+def _is_placeholder_text(text):
+    if text is None:
+        return False
+    stripped = text.strip()
+    return (not stripped) or all(ch in " _\u3000" for ch in text) or "_" in text
+
+
+def _parse_date_parts(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return "", "", ""
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
+        year, month, day = raw.split("-")
+        return year, str(int(month)), str(int(day))
+    match = re.search(r"(\d{4})\D+(\d{1,2})\D+(\d{1,2})", raw)
+    if match:
+        year, month, day = match.groups()
+        return year, str(int(month)), str(int(day))
+    return raw, "", ""
+
+
+def _fill_date_cell(cell, value):
+    year, month, day = _parse_date_parts(value)
+    if not year:
+        return False
+    parts = [year, month, day]
+    part_idx = 0
+    for para in cell.paragraphs:
+        runs = para.runs
+        for idx, run in enumerate(runs):
+            if any(mark in run.text for mark in ("年", "月", "日")) and idx > 0:
+                prev_run = runs[idx - 1]
+                if _is_placeholder_text(prev_run.text) and part_idx < len(parts):
+                    _set_run_text(prev_run, parts[part_idx])
+                    part_idx += 1
+        if part_idx >= len(parts):
+            return True
+    return part_idx > 0
+
+
+def _check_first_sym_in_paragraph(paragraph, checked):
+    if paragraph is None:
+        return
+    for run in paragraph.runs:
+        if run._element.find(qn('w:sym')) is not None:
+            _check_sym(run, checked)
+            return
 
 
 # ══════════════════════════════════════════════════════
@@ -116,7 +180,7 @@ def _fill_after_keyword(cell, keyword, text):
                 continue
             if found_keyword and (run.text.strip() == '' or
                                    all(c in ' _\u3000' for c in run.text)):
-                run.text = '  ' + text
+                _set_run_text(run, '  ' + text)
                 return True
     return False
 
@@ -144,7 +208,7 @@ def _fill_other_option(cell, option_label, text):
                 for j in range(i + 1, len(runs)):
                     target = runs[j]
                     if '_' in target.text or target.text.strip() == '':
-                        target.text = target.text.replace('_', '', 1).strip() + text
+                        _set_run_text(target, target.text.replace('_', '', 1).strip() + text)
                         return True
     return False
 
@@ -157,7 +221,7 @@ def _fill_underline_in_paragraph(paragraph, index, value):
             continue
         count += 1
         if count == index:
-            run.text = value
+            _set_run_text(run, value)
             return True
     return False
 
@@ -171,7 +235,7 @@ def _fill_numbered_lines(cell, values):
     for para in cell.paragraphs:
         for run in para.runs:
             if '_' in run.text and value_idx < len(values):
-                run.text = values[value_idx]
+                _set_run_text(run, values[value_idx])
                 value_idx += 1
                 break
         if value_idx >= len(values):
@@ -194,15 +258,14 @@ def _safe_set_value(table, row, col, text):
                 style_run = p.runs[0]
                 p.runs[0].text = str(text)
                 _copy_run_style(style_run, p.runs[0])
+                _apply_fill_style(p.runs[0])
                 for run in p.runs[1:]:
                     run.text = ''
                 return
         # 没有 run 则新建
         if cell.paragraphs:
             run = cell.paragraphs[0].add_run(str(text))
-            run.font.name = FONT_FANG_GB
-            run.font.size = SIZE_TABLE
-            _set_east_asia_font(run, FONT_FANG_GB)
+            _apply_fill_style(run)
     except (IndexError, AttributeError):
         pass
 
@@ -345,7 +408,7 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
                 code_idx += 1
 
     # 定级对象类型（勾选）
-    type_cell = t3.rows[1].cells[1]
+    type_cell = t3.rows[1].cells[2]
     if tgt.target_type:
         _find_and_check(type_cell, tgt.target_type)
     # 技术类型多选
@@ -403,11 +466,11 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
             _fill_other_option(t3.rows[8].cells[2], '其它', tgt.interconnect_other)
 
     # 运行时间（纯值）
-    _safe_set_value(t3, 9, 2, tgt.run_date)
+    _fill_date_cell(t3.rows[9].cells[2], tgt.run_date)
 
     # 是否分系统（勾选）
     if tgt.is_subsystem:
-        _find_and_check(t3.rows[10].cells[1], tgt.is_subsystem)
+        _find_and_check(t3.rows[10].cells[2], tgt.is_subsystem)
 
     # 上级系统
     _safe_set_value(t3, 11, 2, tgt.parent_system or '/')
@@ -416,18 +479,18 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
     # ══════ 表4: 定级等级 (index 3, 5列) ══════
     t4 = doc.tables[3]
 
-    # 安全保护等级（勾选）— 需要分别勾选业务信息等级、系统服务等级、最终等级
-    # 表4 row11 包含三个等级的勾选区域
-    level_cell = t4.rows[11].cells[2]
-    if g.biz_level:
-        _find_and_check(level_cell, g.biz_level, multi=True)
-    if g.service_level:
-        _find_and_check(level_cell, g.service_level, multi=True)
+    biz_row_map = {"第一级": 1, "第二级": 2, "第三级": 3, "第四级": 4, "第五级": 5}
+    svc_row_map = {"第一级": 6, "第二级": 7, "第三级": 8, "第四级": 9, "第五级": 10}
+
+    if g.biz_level in biz_row_map:
+        _check_paragraph_items(t4.rows[biz_row_map[g.biz_level]].cells[1], g.biz_level_items)
+    if g.service_level in svc_row_map:
+        _check_paragraph_items(t4.rows[svc_row_map[g.service_level]].cells[1], g.service_level_items)
     if g.final_level:
-        _find_and_check(level_cell, g.final_level, multi=True)
+        _find_and_check(t4.rows[11].cells[2], g.final_level, multi=True)
 
     # 定级时间
-    _safe_set_value(t4, 12, 2, g.grading_date)
+    _fill_date_cell(t4.rows[12].cells[2], g.grading_date)
 
     # 定级报告（勾选有/无 + 填附件名）
     report_cell = t4.rows[13].cells[2]
@@ -451,21 +514,19 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
     supervisor_cell = t4.rows[15].cells[2]
     if g.has_supervisor:
         _find_and_check(supervisor_cell, '有')
-        # 上级主管部门审核情况：有主管部门但未审核时勾选"未审核"
-        if len(t4.rows) > 17:
-            audit_cell = t4.rows[17].cells[2]
-            if g.supervisor_reviewed:
-                _find_and_check(audit_cell, '已审核')
-            else:
-                _find_and_check(audit_cell, '未审核')
     else:
         _find_and_check(supervisor_cell, '无')
 
     _safe_set_value(t4, 16, 2, g.supervisor_name or '/')
+    audit_cell = t4.rows[17].cells[2]
+    audit_status = g.supervisor_review_status or ('已审核' if g.supervisor_reviewed else '未审核')
+    _find_and_check(audit_cell, audit_status)
+    if audit_status == '已审核' and g.supervisor_doc:
+        _fill_after_keyword(audit_cell, '附件名称', g.supervisor_doc)
 
     # 填表人 / 填表日期
     _safe_set_value(t4, 18, 0, f"填表人：{g.filler}")
-    _safe_set_value(t4, 18, 3, f"填表日期：{g.fill_date}")
+    _fill_date_cell(t4.rows[18].cells[3], g.fill_date)
 
     # ══════ 表5: 应用场景 (index 4) — 保持模版默认，仅填已有数据 ══════
     if len(doc.tables) > 4:
@@ -474,7 +535,11 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
         if sc.cloud.enabled:
             _find_and_check(t5.rows[0].cells[2], '是')
             if sc.cloud.role:
-                _find_and_check(t5.rows[1].cells[2], sc.cloud.role)
+                if sc.cloud.role == '二者均勾选':
+                    _find_and_check(t5.rows[1].cells[2], '云服务商', multi=True)
+                    _find_and_check(t5.rows[1].cells[2], '云服务客户', multi=True)
+                else:
+                    _find_and_check(t5.rows[1].cells[2], sc.cloud.role, multi=True)
             if sc.cloud.service_model:
                 _find_and_check(t5.rows[2].cells[2], sc.cloud.service_model)
                 if sc.cloud.service_model == '其他' and sc.cloud.service_model_other:
@@ -483,17 +548,35 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
                 _find_and_check(t5.rows[3].cells[2], sc.cloud.deploy_model)
                 if sc.cloud.deploy_model == '其他' and sc.cloud.deploy_model_other:
                     _fill_other_option(t5.rows[3].cells[2], '其他', sc.cloud.deploy_model_other)
-            _safe_set_value(t5, 5, 2, sc.cloud.provider_scale)
-            _safe_set_value(t5, 6, 2, sc.cloud.infra_location)
-            _safe_set_value(t5, 7, 2, sc.cloud.ops_location)
-            if sc.cloud.provider_name or sc.cloud.platform_level or sc.cloud.platform_name or sc.cloud.platform_code:
-                _fill_numbered_lines(
+            if sc.cloud.role in ('云服务商', '二者均勾选'):
+                _fill_underline_field(t5.rows[5].cells[2], sc.cloud.provider_scale)
+                _safe_set_value(t5, 6, 2, sc.cloud.infra_location)
+                _safe_set_value(t5, 7, 2, sc.cloud.ops_location)
+            if sc.cloud.role in ('云服务客户', '二者均勾选'):
+                _fill_cloud_provider_line(
                     t5.rows[9].cells[2],
-                    [sc.cloud.provider_name, sc.cloud.platform_level, sc.cloud.platform_name, sc.cloud.platform_code],
+                    sc.cloud.provider_name,
+                    sc.cloud.platform_level,
+                    sc.cloud.platform_name,
+                    sc.cloud.platform_code,
                 )
-            _safe_set_value(t5, 10, 2, sc.cloud.client_ops_location)
+                _safe_set_value(t5, 10, 2, sc.cloud.client_ops_location)
+                if sc.cloud.platform_cert:
+                    _fill_after_keyword(t5.rows[11].cells[2], '附件', sc.cloud.platform_cert)
         else:
             _find_and_check(t5.rows[0].cells[2], '否')
+        _find_and_check(t5.rows[12].cells[2], '是' if sc.mobile.enabled else '否')
+        if sc.mobile.enabled:
+            _safe_set_value(t5, 13, 2, sc.mobile.app_name)
+            if sc.mobile.wireless:
+                _find_and_check(t5.rows[14].cells[2], sc.mobile.wireless, multi=True)
+            if sc.mobile.terminal:
+                _find_and_check(t5.rows[15].cells[2], sc.mobile.terminal, multi=True)
+        _find_and_check(t5.rows[16].cells[2], '是' if sc.iot.enabled else '否')
+        _find_and_check(t5.rows[19].cells[2], '是' if sc.ics.enabled else '否')
+        _find_and_check(t5.rows[22].cells[2], '是' if sc.bigdata.enabled else '否')
+        if sc.bigdata.enabled and sc.bigdata.cross_border:
+            _find_and_check(t5.rows[24].cells[2], sc.bigdata.cross_border, multi=True)
 
     # ══════ 表6: 附件清单 (index 5) — 勾选有/无 ══════
     if len(doc.tables) > 5:
@@ -526,9 +609,18 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
             _find_and_check(t7.rows[3].cells[1], code)
         # 数据总量 / 月增长量 — 只填数字到下划线处
         if d.total_size or d.total_size_tb or d.total_size_records:
-            _fill_numbered_lines(t7.rows[4].cells[1], [d.total_size or d.total_size_tb, d.total_size_records])
+            _fill_total_size_cell(
+                t7.rows[4].cells[1],
+                d.total_size_tb if d.total_size_unit == 'TB' else d.total_size,
+                d.total_size_unit,
+                d.total_size_records,
+            )
         if d.monthly_growth or d.monthly_growth_tb:
-            _fill_numbered_lines(t7.rows[5].cells[1], [d.monthly_growth or d.monthly_growth_tb])
+            _fill_month_growth_cell(
+                t7.rows[5].cells[1],
+                d.monthly_growth_tb if d.monthly_growth_unit == 'TB' else d.monthly_growth,
+                d.monthly_growth_unit,
+            )
         if d.data_source:
             for source in d.data_source.split(','):
                 code = source.strip().split('-')[0]
@@ -628,7 +720,7 @@ def _fill_space_run_before(runs, label, value):
             # 往前找空格 run
             for j in range(i - 1, -1, -1):
                 if runs[j].text.strip() == '':
-                    runs[j].text = value
+                    _set_run_text(runs[j], value)
                     return
             break
 
@@ -639,13 +731,75 @@ def _fill_underline_field(cell, value):
         for run in para.runs:
             if '_' in run.text:
                 # 替换下划线为值
-                import re
-                run.text = re.sub(r'_+', value, run.text, count=1)
+                _set_run_text(run, re.sub(r'_+', value, run.text, count=1))
                 return
     # fallback: 如果没找到下划线，在第一个run前追加
     if cell.paragraphs and cell.paragraphs[0].runs:
         first = cell.paragraphs[0].runs[0]
-        first.text = value + first.text.lstrip()
+        _set_run_text(first, value + first.text.lstrip())
+
+
+def _fill_amount_unit_run(run, amount, unit):
+    if run is None or not amount:
+        return False
+    text = run.text
+    if unit == "TB":
+        text = re.sub(r"_+(?=TB)", str(amount), text, count=1)
+    else:
+        text = re.sub(r"_+(?=GB)", str(amount), text, count=1)
+    _set_run_text(run, text)
+    return True
+
+
+def _fill_total_size_cell(cell, amount, unit, records):
+    amount = str(amount or "").strip()
+    records = str(records or "").strip()
+    unit = (unit or "GB").strip().upper()
+    if not cell.paragraphs:
+        return False
+    if len(cell.paragraphs) >= 1:
+        _check_first_sym_in_paragraph(cell.paragraphs[0], bool(amount))
+        runs = cell.paragraphs[0].runs
+        if len(runs) > 1:
+            _fill_amount_unit_run(runs[1], amount, unit)
+    if len(cell.paragraphs) >= 2:
+        _check_first_sym_in_paragraph(cell.paragraphs[1], bool(records))
+        runs = cell.paragraphs[1].runs
+        if len(runs) > 1 and records:
+            _set_run_text(runs[1], f"2{records}")
+    return True
+
+
+def _fill_month_growth_cell(cell, amount, unit):
+    amount = str(amount or "").strip()
+    unit = (unit or "GB").strip().upper()
+    if not amount or not cell.paragraphs or not cell.paragraphs[0].runs:
+        return False
+    return _fill_amount_unit_run(cell.paragraphs[0].runs[0], amount, unit)
+
+
+def _fill_cloud_provider_line(cell, provider_name, level, platform_name, platform_code):
+    values = [provider_name, level, platform_name, platform_code]
+    value_idx = 0
+    for para in cell.paragraphs:
+        for run in para.runs:
+            if "_" in run.text and value_idx < len(values):
+                _set_run_text(run, values[value_idx])
+                value_idx += 1
+        if value_idx >= len(values):
+            return True
+    return value_idx > 0
+
+
+def _check_paragraph_items(cell, items):
+    targets = {str(item).strip() for item in (items or []) if str(item).strip()}
+    if not targets:
+        return False
+    for para in cell.paragraphs:
+        text = "".join(run.text for run in para.runs if run.text).strip()
+        if text in targets:
+            _check_first_sym_in_paragraph(para, True)
+    return True
 
 
 # ══════════════════════════════════════════════════════
@@ -870,12 +1024,26 @@ def _shade_cell_black(cell):
 
 def _replace_paragraph_text(paragraph, new_text):
     """替换段落文本，保留第一个 run 的格式"""
+    placeholder_pattern = re.compile(r"(X{4,}|_{3,})")
+    style_run = paragraph.runs[0] if paragraph.runs else None
     if not paragraph.runs:
-        paragraph.add_run(new_text)
-        return
-    paragraph.runs[0].text = new_text
-    for run in paragraph.runs[1:]:
+        paragraph.add_run("")
+        style_run = paragraph.runs[0]
+
+    for run in paragraph.runs:
         run.text = ""
+
+    parts = [part for part in placeholder_pattern.split(new_text) if part]
+    if not parts:
+        parts = [new_text]
+
+    for idx, part in enumerate(parts):
+        run = paragraph.runs[0] if idx == 0 else paragraph.add_run()
+        run.text = part
+        if style_run is not None:
+            _copy_run_style(style_run, run)
+        if placeholder_pattern.fullmatch(part):
+            _highlight_run(run, "yellow")
 
 
 def _cell_text_safe(table, row, col):
@@ -905,10 +1073,7 @@ def _insert_topology_image(doc, image_path):
                     run.add_picture(image_path, width=Inches(5.5))
                 else:
                     # 到了下一个标题，在前面插入新段落
-                    new_p = OxmlElement('w:p')
-                    p._element.addprevious(new_p)
-                    from docx.text.paragraph import Paragraph
-                    para = Paragraph(new_p, p._element.getparent())
+                    para = p.insert_paragraph_before()
                     run = para.add_run()
                     run.add_picture(image_path, width=Inches(5.5))
                 return

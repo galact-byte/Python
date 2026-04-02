@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>等保文档迁移工具</title>
-<link rel="stylesheet" href="/static/style.css?v=24">
+<link rel="stylesheet" href="/static/style.css?v=25">
 </head>
 <body>
 
@@ -292,7 +292,7 @@
             <div class="form-row"><label>部署范围：</label><select id="deploy_scope" onchange="toggleOtherInput(this,'deploy_scope_other')"><option value="">请选择</option><option>1-局域网</option><option>2-城域网</option><option>3-广域网</option><option>9-其他</option></select><input type="text" id="deploy_scope_other" placeholder="请填写具体部署范围" style="display:none;width:220px;"></div>
             <div class="form-row"><label>网络性质：</label><select id="net_type" onchange="onNetworkTypeChange()"><option value="">请选择</option><option>1-业务专网</option><option>2-互联网</option><option>9-其他</option></select><input type="text" id="net_type_other" placeholder="请填写具体网络性质" style="display:none;width:220px;"><input type="text" id="source_ip" placeholder="源站IP地址范围" style="display:none;width:220px;"><input type="text" id="domain" placeholder="域名" style="display:none;width:180px;"><input type="text" id="protocol_port" placeholder="主要协议/端口" style="display:none;width:220px;"></div>
             <div class="form-row"><label>互联情况：</label><select id="interconnect" onchange="toggleOtherInput(this,'interconnect_other')"><option value="">请选择</option><option>1-与其他行业系统连接</option><option>2-与本行业其他单位系统连接</option><option>3-与本单位其他系统连接</option><option>9-其他</option></select><input type="text" id="interconnect_other" placeholder="请填写具体互联情况" style="display:none;width:220px;"></div>
-            <div class="form-row"><label>运行时间：</label><input type="text" id="run_date" data-field="target.run_date" placeholder="如 2022 年 12 月 01 日"></div>
+            <div class="form-row"><label>运行时间：</label><div class="date-field"><input type="date" id="run_date" data-field="target.run_date"><button type="button" class="date-trigger" onclick="openDatePicker('run_date')" aria-label="选择运行时间"></button></div></div>
           </div>
           <div class="form-group">
             <div class="form-group-title">上级系统</div>
@@ -306,23 +306,26 @@
         <div class="tab-panel" id="tab-2">
           <div class="form-group">
             <div class="form-group-title">安全保护等级</div>
-            <div class="form-row"><label>业务信息等级：</label><select id="biz_level" onchange="updateFinalLevel()"><option>第一级</option><option selected>第二级</option><option>第三级</option><option>第四级</option><option>第五级</option></select></div>
-            <div class="form-row"><label>系统服务等级：</label><select id="svc_level" onchange="updateFinalLevel()"><option>第一级</option><option selected>第二级</option><option>第三级</option><option>第四级</option><option>第五级</option></select></div>
+            <div class="form-row"><label>业务信息等级：</label><select id="biz_level" onchange="onLevelFieldChange('biz')"><option>第一级</option><option selected>第二级</option><option>第三级</option><option>第四级</option><option>第五级</option></select></div>
+            <div class="form-row"><label>业务信息勾选：</label><div id="biz_level_checks" class="checkbox-row checkbox-wrap level-checks"></div></div>
+            <div class="form-row"><label>系统服务等级：</label><select id="svc_level" onchange="onLevelFieldChange('svc')"><option>第一级</option><option selected>第二级</option><option>第三级</option><option>第四级</option><option>第五级</option></select></div>
+            <div class="form-row"><label>系统服务勾选：</label><div id="svc_level_checks" class="checkbox-row checkbox-wrap level-checks"></div></div>
             <div class="form-row"><label>最终等级：</label><span id="final_level" style="color:var(--primary);font-size:16px;font-weight:bold;">第二级</span></div>
           </div>
           <div class="form-group">
             <div class="form-group-title">定级信息</div>
-            <div class="form-row"><label>定级时间：</label><input type="text" id="grading_date" placeholder="如 2024 年 12 月 14 日"></div>
+            <div class="form-row"><label>定级时间：</label><div class="date-field"><input type="date" id="grading_date"><button type="button" class="date-trigger" onclick="openDatePicker('grading_date')" aria-label="选择定级时间"></button></div></div>
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="has_report" checked><label for="has_report">有定级报告</label></div></div>
             <div class="form-row"><label>报告附件名：</label><input type="text" id="report_name"></div>
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="has_review" checked><label for="has_review">已专家评审</label></div></div>
             <div class="form-row"><label>评审附件名：</label><input type="text" id="review_name"></div>
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="has_supervisor" onchange="onSupervisorChange()"><label for="has_supervisor">有上级行业主管部门</label></div></div>
             <div class="form-row"><label>主管部门：</label><input type="text" id="supervisor_name" value="/"></div>
-            <div class="form-row" id="supervisor_review_row" style="display:none;"><label></label><div class="checkbox-row"><input type="checkbox" id="supervisor_reviewed"><label for="supervisor_reviewed">主管部门已审核</label></div></div>
+            <div class="form-row" id="supervisor_review_row"><label>审核情况：</label><select id="supervisor_review_status" onchange="onSupervisorReviewStatusChange()"><option value="未审核">未审核</option><option value="已审核">已审核</option></select></div>
+            <div class="form-row" id="supervisor_doc_row" style="display:none;"><label>审核附件名：</label><input type="text" id="supervisor_doc"></div>
             <hr style="border-color:var(--border);margin:12px 0;">
             <div class="form-row"><label>填表人：</label><input type="text" id="filler"></div>
-            <div class="form-row"><label>填表日期：</label><input type="text" id="fill_date"></div>
+            <div class="form-row"><label>填表日期：</label><div class="date-field"><input type="date" id="fill_date"><button type="button" class="date-trigger" onclick="openDatePicker('fill_date')" aria-label="选择填表日期"></button></div></div>
           </div>
         </div>
 
@@ -334,18 +337,24 @@
             <div class="form-group-title">云计算</div>
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="cloud_enabled" onchange="toggleSection('cloud')"><label for="cloud_enabled">采用云计算技术</label></div></div>
             <div class="cloud-fields">
-              <div class="form-row"><label>责任主体：</label><select id="cloud_role" disabled><option value="">请选择</option><option>云服务商</option><option>云服务客户</option><option>二者均勾选</option></select></div>
+              <div class="form-row"><label>责任主体：</label><select id="cloud_role" onchange="onCloudRoleChange()" disabled><option value="">请选择</option><option>云服务商</option><option>云服务客户</option><option>二者均勾选</option></select></div>
               <div class="form-row"><label>服务模式：</label><select id="cloud_service" onchange="toggleOtherInput(this,'cloud_service_other')" disabled><option value="">请选择</option><option>IaaS</option><option>PaaS</option><option>SaaS</option><option>其他</option></select><input type="text" id="cloud_service_other" placeholder="请填写其他服务模式" style="display:none;width:220px;" disabled></div>
               <div class="form-row"><label>部署模式：</label><select id="cloud_deploy" onchange="toggleOtherInput(this,'cloud_deploy_other')" disabled><option value="">请选择</option><option>私有云</option><option>公有云</option><option>混合云</option><option>其他</option></select><input type="text" id="cloud_deploy_other" placeholder="请填写其他部署模式" style="display:none;width:220px;" disabled></div>
-              <div class="form-row"><label>预置字典：</label><select id="cloud_provider_kind" onchange="refreshCloudPresetOptions()" disabled><option value="cloud_vendor">云服务商</option><option value="hosting_room">第三方托管机房</option><option value="manual">手动填写</option></select><select id="cloud_provider_preset" onchange="applyCloudPreset()" disabled><option value="">请选择</option></select></div>
-              <div class="form-row"><label>云服务商/机房：</label><input type="text" id="cloud_provider" disabled></div>
-              <div class="form-row"><label>云服务商规模：</label><input type="text" id="cloud_provider_scale" placeholder="如 12 个云服务客户" disabled></div>
-              <div class="form-row"><label>基础设施地点：</label><input type="text" id="cloud_infra_location" disabled></div>
-              <div class="form-row"><label>平台运维地点：</label><input type="text" id="cloud_ops_location" disabled></div>
-              <div class="form-row"><label>平台等级：</label><input type="text" id="cloud_plat_level" disabled></div>
-              <div class="form-row"><label>平台名称：</label><input type="text" id="cloud_plat_name" disabled></div>
-              <div class="form-row"><label>备案编号：</label><input type="text" id="cloud_plat_code" disabled></div>
-              <div class="form-row"><label>客户运维地点：</label><input type="text" id="cloud_ops" disabled></div>
+              <div id="cloud_vendor_fields">
+                <div class="form-row"><label>云服务商名称：</label><input type="text" id="cloud_provider" disabled></div>
+                <div class="form-row"><label>云服务商规模：</label><input type="text" id="cloud_provider_scale" placeholder="填写云服务客户数量，如 12" disabled></div>
+                <div class="form-row"><label>基础设施地点：</label><input type="text" id="cloud_infra_location" disabled></div>
+                <div class="form-row"><label>平台运维地点：</label><input type="text" id="cloud_ops_location" disabled></div>
+              </div>
+              <div id="cloud_client_fields">
+                <div class="form-row"><label>云服务商选择：</label><select id="cloud_provider_kind" onchange="refreshCloudPresetOptions()" disabled><option value="cloud_vendor">云服务商</option><option value="hosting_room">第三方托管机房</option><option value="manual">手动填写</option></select><select id="cloud_provider_preset" onchange="applyCloudPreset()" disabled><option value="">请选择</option></select></div>
+                <div class="form-row"><label>云服务商：</label><input type="text" id="cloud_provider_client" disabled></div>
+                <div class="form-row"><label>平台等级：</label><input type="text" id="cloud_plat_level" disabled></div>
+                <div class="form-row"><label>平台名称：</label><input type="text" id="cloud_plat_name" disabled></div>
+                <div class="form-row"><label>备案编号：</label><input type="text" id="cloud_plat_code" disabled></div>
+                <div class="form-row"><label>客户运维地点：</label><input type="text" id="cloud_ops" disabled></div>
+                <div class="form-row"><label>备案证明附件：</label><input type="text" id="cloud_platform_cert" disabled></div>
+              </div>
             </div>
           </div>
 
@@ -408,8 +417,39 @@
             <div class="form-row"><label>安全责任部门：</label><input type="text" id="data_sec_dept"></div>
             <div class="form-row"><label>安全负责人：</label><input type="text" id="data_sec_person"></div>
             <div class="form-row"><label>个人信息：</label><select id="personal_info"><option value="">请选择</option><option>1-涉及敏感个人信息</option><option>2-涉及未成年人个人信息</option><option>3-涉及一般个人信息</option><option>4-不涉及</option></select></div>
-            <div class="form-row"><label>数据总量：</label><div class="inline-group"><label>GB</label><input type="text" id="total_size" placeholder="如 30"><label>TB</label><input type="text" id="total_size_tb" placeholder="如 0"><label>万条</label><input type="text" id="total_size_records" placeholder="如 2"></div></div>
-            <div class="form-row"><label>月增长量：</label><div class="inline-group"><label>GB</label><input type="text" id="monthly_growth" placeholder="如 1"><label>TB</label><input type="text" id="monthly_growth_tb" placeholder="如 0"></div></div>
+            <div class="form-row">
+              <label>数据总量：</label>
+              <div class="data-amount-group">
+                <div class="data-amount-option">
+                  <span class="option-tag">01</span>
+                  <input type="text" id="total_size_value" placeholder="填写数量，如 30">
+                  <select id="total_size_unit">
+                    <option value="GB">GB</option>
+                    <option value="TB">TB</option>
+                  </select>
+                  <span class="option-note">二选一填写</span>
+                </div>
+                <div class="data-amount-option">
+                  <span class="option-tag">02</span>
+                  <input type="text" id="total_size_records" placeholder="填写条数，如 2">
+                  <span class="option-suffix">万条</span>
+                </div>
+              </div>
+            </div>
+            <div class="form-row">
+              <label>月增长量：</label>
+              <div class="data-amount-group">
+                <div class="data-amount-option">
+                  <span class="option-tag">01</span>
+                  <input type="text" id="monthly_growth_value" placeholder="填写数量，如 1">
+                  <select id="monthly_growth_unit">
+                    <option value="GB">GB</option>
+                    <option value="TB">TB</option>
+                  </select>
+                  <span class="option-note">二选一填写</span>
+                </div>
+              </div>
+            </div>
             <hr style="border-color:var(--border);margin:12px 0;">
             <div class="form-row"><label>数据来源：</label><div class="checkbox-row checkbox-wrap"><label><input type="checkbox" id="data_source_collect"> 1-系统采集</label><label><input type="checkbox" id="data_source_generate"> 2-系统产生</label><label><input type="checkbox" id="data_source_manual"> 3-人工填报</label><label><input type="checkbox" id="data_source_trade"> 4-交易购买</label><label><input type="checkbox" id="data_source_share"> 5-共享交换</label><label><input type="checkbox" id="data_source_other_chk" onchange="toggleCheckboxOther(this,'data_source_other')"> 9-其他</label><input type="text" id="data_source_other" placeholder="请填写其他来源" style="display:none;width:220px;"></div></div>
             <div class="form-row"><label>数据来源单位：</label><textarea id="inflow_units" rows="3" placeholder="每行一个来源单位，最多可填 3 个"></textarea></div>
@@ -497,19 +537,36 @@
 let currentStep = 0;
 const changeLog = [];
 window.__DEV_MODE__ = {{ 'true' if dev_mode else 'false' }};
+const LEVEL_IMPACT_OPTIONS = {
+  '第一级': ['仅对公民、法人和其他组织的合法权益造成一般损害'],
+  '第二级': [
+    '对公民、法人和其他组织的合法权益造成严重损害',
+    '对公民、法人和其他组织的合法权益造成特别严重损害',
+    '对社会秩序和公共利益造成一般损害',
+  ],
+  '第三级': ['对社会秩序和公共利益造成严重损害'],
+  '第四级': [
+    '对社会秩序和公共利益造成特别严重损害',
+    '对国家安全或地区安全、国计民生造成一般损害',
+  ],
+  '第五级': [
+    '对国家安全或地区安全、国计民生造成严重损害',
+    '对国家安全或地区安全、国计民生造成特别严重损害',
+  ],
+};
 const CLOUD_PROVIDER_PRESETS = {
   cloud_vendor: {
-    aliyun: {name: '阿里云', platform_level: '三级', platform_name: '阿里云飞天云平台', platform_code: '待核实', client_ops_location: '杭州', infra_location: '杭州/张北等多地', ops_location: '杭州'},
-    tencent: {name: '腾讯云', platform_level: '三级', platform_name: '腾讯云平台', platform_code: '待核实', client_ops_location: '广州', infra_location: '广州/上海等多地', ops_location: '广州'},
-    huawei: {name: '华为云', platform_level: '三级', platform_name: '华为云平台', platform_code: '待核实', client_ops_location: '贵安/东莞', infra_location: '贵安/乌兰察布等多地', ops_location: '贵安/东莞'},
-    ctyun: {name: '天翼云', platform_level: '三级', platform_name: '天翼云平台', platform_code: '待核实', client_ops_location: '北京/上海', infra_location: '北京/上海等多地', ops_location: '北京/上海'},
-    ucloud: {name: 'UCloud', platform_level: '三级', platform_name: 'UCloud 云平台', platform_code: '待核实', client_ops_location: '上海', infra_location: '上海/广州', ops_location: '上海'},
+    aliyun: {name: '阿里云', platform_level: '三级', platform_name: '阿里云飞天云平台', platform_code: '待核实', infra_location: '杭州/张北等多地', ops_location: '杭州'},
+    tencent: {name: '腾讯云', platform_level: '三级', platform_name: '腾讯云平台', platform_code: '待核实', infra_location: '广州/上海等多地', ops_location: '广州'},
+    huawei: {name: '华为云', platform_level: '三级', platform_name: '华为公有云服务（IaaS）系统', platform_code: '44030002840-25001', infra_location: '贵安/乌兰察布等多地', ops_location: '贵安/东莞'},
+    ctyun: {name: '天翼云', platform_level: '三级', platform_name: '天翼云平台', platform_code: '待核实', infra_location: '北京/上海等多地', ops_location: '北京/上海'},
+    ucloud: {name: 'UCloud', platform_level: '三级', platform_name: 'UCloud 云平台', platform_code: '待核实', infra_location: '上海/广州', ops_location: '上海'},
   },
   hosting_room: {
-    chinatelecom: {name: '中国电信机房', platform_level: '三级', platform_name: '中国电信数据中心', platform_code: '待核实', client_ops_location: '按机房所在地填写', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
-    chinaunicom: {name: '中国联通机房', platform_level: '三级', platform_name: '中国联通数据中心', platform_code: '待核实', client_ops_location: '按机房所在地填写', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
-    chinamobile: {name: '中国移动机房', platform_level: '三级', platform_name: '中国移动数据中心', platform_code: '待核实', client_ops_location: '按机房所在地填写', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
-    local: {name: '地方第三方托管机房', platform_level: '待核实', platform_name: '第三方托管机房', platform_code: '待核实', client_ops_location: '按机房所在地填写', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
+    chinatelecom: {name: '中国电信机房', platform_level: '三级', platform_name: '中国电信数据中心', platform_code: '待核实', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
+    chinaunicom: {name: '中国联通机房', platform_level: '三级', platform_name: '中国联通数据中心', platform_code: '待核实', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
+    chinamobile: {name: '中国移动机房', platform_level: '三级', platform_name: '中国移动数据中心', platform_code: '待核实', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
+    local: {name: '地方第三方托管机房', platform_level: '待核实', platform_name: '第三方托管机房', platform_code: '待核实', infra_location: '按机房所在地填写', ops_location: '按机房所在地填写'},
   },
 };
 
@@ -743,7 +800,8 @@ function fillBeianData(d) {
   setField('target_name', t.name);
   setField('target_code', t.code);
   setField('biz_desc', t.biz_desc);
-  setField('run_date', t.run_date);
+  const runDateEl = document.getElementById('run_date');
+  if (runDateEl) runDateEl.value = parseDateForInput(t.run_date);
   setField('interconnect', t.interconnect);
   setField('parent_sys', t.parent_system);
   setField('parent_unit', t.parent_unit);
@@ -801,23 +859,27 @@ function fillBeianData(d) {
   if (t.is_subsystem) { document.getElementById('is_sub').value = t.is_subsystem === '是' ? '是' : '否'; }
 
   const g = d.grading || {};
-  setField('grading_date', g.grading_date);
+  document.getElementById('grading_date').value = parseDateForInput(g.grading_date);
   setField('report_name', g.report_name);
   setField('review_name', g.review_name);
   setField('filler', g.filler);
-  setField('fill_date', g.fill_date);
+  document.getElementById('fill_date').value = parseDateForInput(g.fill_date);
   document.getElementById('has_report').checked = !!g.has_report;
   document.getElementById('has_review').checked = !!g.has_review;
   document.getElementById('has_supervisor').checked = !!g.has_supervisor;
-  document.getElementById('supervisor_reviewed').checked = !!g.supervisor_reviewed;
   setField('supervisor_name', g.supervisor_name);
+  document.getElementById('supervisor_review_status').value = g.supervisor_review_status || (g.supervisor_reviewed ? '已审核' : '未审核');
+  setField('supervisor_doc', g.supervisor_doc);
   onSupervisorChange();
+  onSupervisorReviewStatusChange();
   if (g.biz_level) { document.getElementById('biz_level').value = g.biz_level; }
   if (g.service_level) { document.getElementById('svc_level').value = g.service_level; }
+  renderLevelCheckOptions('biz', g.biz_level_items || []);
+  renderLevelCheckOptions('svc', g.service_level_items || []);
   updateFinalLevel();
 
   const s = d.scenario || {};
-  const cloud = s.cloud || {};
+  const cloud = normalizeCloudClientFields(s.cloud || {});
   document.getElementById('cloud_enabled').checked = !!cloud.enabled;
   setField('cloud_role', cloud.role);
   setField('cloud_service', cloud.service_model);
@@ -828,6 +890,7 @@ function fillBeianData(d) {
   refreshCloudPresetOptions();
   setField('cloud_provider_preset', cloud.provider_preset);
   setField('cloud_provider', cloud.provider_name);
+  setField('cloud_provider_client', cloud.provider_name);
   setField('cloud_provider_scale', cloud.provider_scale);
   setField('cloud_infra_location', cloud.infra_location);
   setField('cloud_ops_location', cloud.ops_location);
@@ -835,8 +898,10 @@ function fillBeianData(d) {
   setField('cloud_plat_name', cloud.platform_name);
   setField('cloud_plat_code', cloud.platform_code);
   setField('cloud_ops', cloud.client_ops_location);
+  setField('cloud_platform_cert', cloud.platform_cert);
   toggleOtherInput(document.getElementById('cloud_service'), 'cloud_service_other');
   toggleOtherInput(document.getElementById('cloud_deploy'), 'cloud_deploy_other');
+  onCloudRoleChange();
 
   const mobile = s.mobile || {};
   document.getElementById('mobile_enabled').checked = !!mobile.enabled;
@@ -860,16 +925,16 @@ function fillBeianData(d) {
   setField('bigdata_cross', bigdata.cross_border);
   ['cloud', 'mobile', 'iot', 'ics', 'bigdata'].forEach(toggleSection);
 
-  const dd = d.data || {};
+  const dd = normalizeDataAmountFields(d.data || {});
   setField('data_name_field', dd.data_name);
   setField('data_category', dd.data_category);
   setField('data_sec_dept', dd.data_dept);
   setField('data_sec_person', dd.data_person);
-  setField('total_size', dd.total_size);
-  setField('total_size_tb', dd.total_size_tb);
+  document.getElementById('total_size_unit').value = dd.total_size_unit || (dd.total_size_tb ? 'TB' : 'GB');
+  setField('total_size_value', dd.total_size_tb || dd.total_size);
   setField('total_size_records', dd.total_size_records);
-  setField('monthly_growth', dd.monthly_growth);
-  setField('monthly_growth_tb', dd.monthly_growth_tb);
+  document.getElementById('monthly_growth_unit').value = dd.monthly_growth_unit || (dd.monthly_growth_tb ? 'TB' : 'GB');
+  setField('monthly_growth_value', dd.monthly_growth_tb || dd.monthly_growth);
   // 个人信息 select
   if (dd.personal_info) { const el = document.getElementById('personal_info'); for (let o of el.options) { if (o.value.startsWith(dd.personal_info+'-') || o.value === dd.personal_info || o.value.startsWith(dd.personal_info)) { el.value = o.value; break; } } }
   fillDataSource(dd.data_source, dd.data_source_other);
@@ -901,6 +966,8 @@ function fillReportData(r) {
   setField('rpt_svc_degree', r.svc_degree);
   if (r.biz_level) document.getElementById('biz_level').value = r.biz_level;
   if (r.svc_level) document.getElementById('svc_level').value = r.svc_level;
+  renderLevelCheckOptions('biz');
+  renderLevelCheckOptions('svc');
   updateFinalLevel();
 }
 
@@ -913,6 +980,71 @@ function setField(id, value) {
   else el.value = v;
   el.classList.add('auto-filled');
   addLog('自动填充', id.replace(/_/g,' '), '', v);
+}
+
+function trimPlaceholderValue(value, prefix = '') {
+  let text = (value || '').toString().replace(/\s+/g, '');
+  if (!text) return '';
+  if (prefix && text.startsWith(prefix)) {
+    text = text.slice(prefix.length);
+  }
+  return text.replace(/^_+|_+$/g, '');
+}
+
+function parseUnitAmountValue(raw, prefix = '') {
+  const compact = (raw || '').toString().replace(/\s+/g, '');
+  if (!compact) return { amount: '', unit: '' };
+  const match = compact.match(/(.*?)GB\/(.*?)TB/);
+  if (!match) {
+    const amount = trimPlaceholderValue(compact, prefix);
+    return { amount, unit: amount ? 'GB' : '' };
+  }
+  let gbPart = match[1];
+  if (prefix && gbPart.startsWith(prefix)) {
+    gbPart = gbPart.slice(prefix.length);
+  }
+  const gbValue = gbPart.replace(/^_+|_+$/g, '');
+  const tbValue = match[2].replace(/^_+|_+$/g, '');
+  if (gbValue) return { amount: gbValue, unit: 'GB' };
+  if (tbValue) return { amount: tbValue, unit: 'TB' };
+  return { amount: '', unit: '' };
+}
+
+function normalizeDataAmountFields(data = {}) {
+  const normalized = { ...data };
+  const totalRaw = `${data.total_size || ''}\n${data.total_size_tb || ''}`;
+  const totalParsed = parseUnitAmountValue(totalRaw, '1');
+  if (totalParsed.amount) {
+    normalized.total_size_unit = totalParsed.unit;
+    normalized.total_size = totalParsed.unit === 'GB' ? totalParsed.amount : '';
+    normalized.total_size_tb = totalParsed.unit === 'TB' ? totalParsed.amount : '';
+  } else {
+    normalized.total_size = trimPlaceholderValue(normalized.total_size, '1');
+    normalized.total_size_tb = trimPlaceholderValue(normalized.total_size_tb);
+  }
+
+  const totalRecordSource = `${data.total_size_records || ''}\n${data.total_size || ''}`;
+  const totalRecordMatch = totalRecordSource.replace(/\s+/g, '').match(/2([^万（\n]*)万条/);
+  if (totalRecordMatch && totalRecordMatch[1] !== undefined) {
+    normalized.total_size_records = trimPlaceholderValue(totalRecordMatch[1]);
+  } else {
+    normalized.total_size_records = trimPlaceholderValue(normalized.total_size_records, '2');
+  }
+
+  const monthRaw = `${data.monthly_growth || ''}\n${data.monthly_growth_tb || ''}`;
+  const monthParsed = parseUnitAmountValue(monthRaw);
+  if (monthParsed.amount) {
+    normalized.monthly_growth_unit = monthParsed.unit;
+    normalized.monthly_growth = monthParsed.unit === 'GB' ? monthParsed.amount : '';
+    normalized.monthly_growth_tb = monthParsed.unit === 'TB' ? monthParsed.amount : '';
+  } else {
+    normalized.monthly_growth = trimPlaceholderValue(normalized.monthly_growth);
+    normalized.monthly_growth_tb = trimPlaceholderValue(normalized.monthly_growth_tb);
+  }
+
+  normalized.total_size_unit = normalized.total_size_unit || (normalized.total_size_tb ? 'TB' : 'GB');
+  normalized.monthly_growth_unit = normalized.monthly_growth_unit || (normalized.monthly_growth_tb ? 'TB' : 'GB');
+  return normalized;
 }
 
 function fillDataSource(value, otherValue='') {
@@ -952,6 +1084,81 @@ function collectDataSource() {
   return values.join(',');
 }
 
+function parseDateForInput(value) {
+  const raw = (value || '').toString().trim();
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const match = raw.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!match) return '';
+  const [, year, month, day] = match;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+function formatDateForDisplay(value) {
+  const raw = (value || '').toString().trim();
+  if (!raw) return '';
+  const normalized = parseDateForInput(raw);
+  if (!normalized) return raw;
+  const [year, month, day] = normalized.split('-');
+  return `${year} 年 ${Number(month)} 月 ${Number(day)} 日`;
+}
+
+function openDatePicker(id) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  input.focus();
+  if (typeof input.showPicker === 'function') {
+    try {
+      input.showPicker();
+      return;
+    } catch (err) {
+      // 某些浏览器在非用户手势场景会拒绝，继续走 focus 回退
+    }
+  }
+  input.click();
+}
+
+function normalizeCloudClientFields(cloud = {}) {
+  const normalized = {...cloud};
+  const raw = (normalized.provider_name || '').replace(/\n/g, ' ').trim();
+  if (!raw) return normalized;
+  if (!raw.includes('云服务商为') && !raw.includes('平台安全等级') && !raw.includes('平台名称') && !raw.includes('平台备案编号')) {
+    return normalized;
+  }
+  const providerMatch = raw.match(/云服务商为\s*(.*?)\s*平台安全等级/);
+  const levelMatch = raw.match(/平台安全等级\s*(.*?)\s*平台名称/);
+  const nameMatch = raw.match(/平台名称\s*(.*?)\s*平台备案编号/);
+  const codeMatch = raw.match(/平台备案编号\s*([A-Za-z0-9\-]+)/);
+  normalized.provider_name = providerMatch ? providerMatch[1].trim() : normalized.provider_name;
+  if (!normalized.platform_level && levelMatch) normalized.platform_level = levelMatch[1].trim();
+  if (!normalized.platform_name && nameMatch) normalized.platform_name = nameMatch[1].trim();
+  if (!normalized.platform_code && codeMatch) normalized.platform_code = codeMatch[1].trim();
+  return normalized;
+}
+
+function renderLevelCheckOptions(kind, selectedItems = []) {
+  const levelId = kind === 'biz' ? 'biz_level' : 'svc_level';
+  const containerId = kind === 'biz' ? 'biz_level_checks' : 'svc_level_checks';
+  const level = document.getElementById(levelId).value;
+  const container = document.getElementById(containerId);
+  const options = LEVEL_IMPACT_OPTIONS[level] || [];
+  const selectedSet = new Set((selectedItems || []).filter(Boolean));
+  container.innerHTML = options.map((item, index) => {
+    const checked = selectedSet.size ? selectedSet.has(item) : index === 0;
+    return `<label><input type="checkbox" data-level-kind="${kind}" value="${item.replace(/"/g, '&quot;')}" ${checked ? 'checked' : ''}> ${item}</label>`;
+  }).join('');
+}
+
+function onLevelFieldChange(kind) {
+  renderLevelCheckOptions(kind, collectLevelItems(kind));
+  updateFinalLevel();
+}
+
+function collectLevelItems(kind) {
+  return Array.from(document.querySelectorAll(`input[data-level-kind="${kind}"]:checked`))
+    .map(el => el.value);
+}
+
 // ── 变更日志 ──
 function addLog(action, field, oldVal, newVal) {
   const time = new Date().toLocaleTimeString('zh-CN', {hour12:false});
@@ -987,9 +1194,9 @@ function updatePreview() {
   const tgtName = document.getElementById('target_name').value || '';
   const tgtCode = document.getElementById('target_code').value || '';
   const bizDesc = document.getElementById('biz_desc').value || '';
-  const runDate = document.getElementById('run_date').value || '';
+  const runDate = formatDateForDisplay(document.getElementById('run_date').value || '');
   const level = document.getElementById('final_level').textContent;
-  const gradDate = document.getElementById('grading_date').value || '';
+  const gradDate = formatDateForDisplay(document.getElementById('grading_date').value || '');
   const filler = document.getElementById('filler').value || '';
   const dataName = document.getElementById('data_name_field').value || '';
   const affil = document.getElementById('affiliation').value || '';
@@ -1053,6 +1260,7 @@ function toggleSection(name) {
   document.querySelectorAll('.'+name+'-fields input, .'+name+'-fields select').forEach(el => {
     el.disabled = !enabled;
   });
+  if (name === 'cloud') onCloudRoleChange();
 }
 
 function onTargetTypeChange() {
@@ -1065,7 +1273,13 @@ function toggleOtherInput(selectEl, inputId) {
   const input = document.getElementById(inputId);
   const isOther = selectEl.value.includes('其他') || selectEl.value.startsWith('99') || selectEl.value.startsWith('9-');
   input.style.display = isOther ? '' : 'none';
-  if (!isOther) input.value = '';
+  if (!isOther) {
+    input.value = '';
+    return;
+  }
+  if (!input.value.trim() && ['svc_scope_other', 'svc_target_other', 'deploy_scope_other', 'net_type_other', 'interconnect_other'].includes(inputId)) {
+    input.value = '本单位';
+  }
 }
 
 function toggleCheckboxOther(checkboxEl, inputId) {
@@ -1108,13 +1322,30 @@ function onStorageTypeChange() {
 
 function onSupervisorChange() {
   const has = document.getElementById('has_supervisor').checked;
-  document.getElementById('supervisor_review_row').style.display = has ? '' : 'none';
   const input = document.getElementById('supervisor_name');
   if (!has) {
     input.value = '/';
   } else if (input.value.trim() === '/') {
     input.value = '';
   }
+  onSupervisorReviewStatusChange();
+}
+
+function onSupervisorReviewStatusChange() {
+  const status = document.getElementById('supervisor_review_status').value;
+  document.getElementById('supervisor_doc_row').style.display = status === '已审核' ? '' : 'none';
+  if (status !== '已审核') {
+    document.getElementById('supervisor_doc').value = '';
+  }
+}
+
+function onCloudRoleChange() {
+  const enabled = document.getElementById('cloud_enabled').checked;
+  const role = document.getElementById('cloud_role').value;
+  const showVendor = enabled && (role === '云服务商' || role === '二者均勾选');
+  const showClient = enabled && (role === '云服务客户' || role === '二者均勾选');
+  document.getElementById('cloud_vendor_fields').style.display = showVendor ? '' : 'none';
+  document.getElementById('cloud_client_fields').style.display = showClient ? '' : 'none';
 }
 
 function toggleInteractionFields() {
@@ -1148,10 +1379,10 @@ function applyCloudPreset() {
   const preset = (CLOUD_PROVIDER_PRESETS[kind] || {})[key];
   if (!preset) return;
   document.getElementById('cloud_provider').value = preset.name || '';
+  document.getElementById('cloud_provider_client').value = preset.name || '';
   document.getElementById('cloud_plat_level').value = preset.platform_level || '';
   document.getElementById('cloud_plat_name').value = preset.platform_name || '';
   document.getElementById('cloud_plat_code').value = preset.platform_code || '';
-  document.getElementById('cloud_ops').value = preset.client_ops_location || '';
   document.getElementById('cloud_infra_location').value = preset.infra_location || '';
   document.getElementById('cloud_ops_location').value = preset.ops_location || '';
 }
@@ -1277,7 +1508,9 @@ function collectFormData() {
     },
     grading: {
       biz_level: document.getElementById('biz_level').value,
+      biz_level_items: collectLevelItems('biz'),
       service_level: document.getElementById('svc_level').value,
+      service_level_items: collectLevelItems('svc'),
       final_level: document.getElementById('final_level').textContent,
       grading_date: document.getElementById('grading_date').value,
       has_report: document.getElementById('has_report').checked,
@@ -1286,7 +1519,9 @@ function collectFormData() {
       review_name: document.getElementById('review_name').value,
       has_supervisor: document.getElementById('has_supervisor').checked,
       supervisor_name: document.getElementById('supervisor_name').value,
-      supervisor_reviewed: document.getElementById('supervisor_reviewed') ? document.getElementById('supervisor_reviewed').checked : false,
+      supervisor_reviewed: document.getElementById('supervisor_review_status').value === '已审核',
+      supervisor_review_status: document.getElementById('supervisor_review_status').value,
+      supervisor_doc: document.getElementById('supervisor_doc').value,
       filler: document.getElementById('filler').value,
       fill_date: document.getElementById('fill_date').value,
     },
@@ -1303,11 +1538,12 @@ function collectFormData() {
         ops_location: document.getElementById('cloud_ops_location').value,
         provider_preset: document.getElementById('cloud_provider_preset').value,
         provider_kind: document.getElementById('cloud_provider_kind').value,
-        provider_name: document.getElementById('cloud_provider').value,
+        provider_name: document.getElementById('cloud_provider_client').value || document.getElementById('cloud_provider').value,
         platform_level: document.getElementById('cloud_plat_level').value,
         platform_name: document.getElementById('cloud_plat_name').value,
         platform_code: document.getElementById('cloud_plat_code').value,
         client_ops_location: document.getElementById('cloud_ops').value,
+        platform_cert: document.getElementById('cloud_platform_cert').value,
       },
       mobile: {
         enabled: document.getElementById('mobile_enabled').checked,
@@ -1346,11 +1582,13 @@ function collectFormData() {
       data_dept: document.getElementById('data_sec_dept').value,
       data_person: document.getElementById('data_sec_person').value,
       personal_info: document.getElementById('personal_info').value,
-      total_size: document.getElementById('total_size').value,
-      total_size_tb: document.getElementById('total_size_tb').value,
+      total_size: document.getElementById('total_size_unit').value === 'GB' ? document.getElementById('total_size_value').value : '',
+      total_size_unit: document.getElementById('total_size_unit').value,
+      total_size_tb: document.getElementById('total_size_unit').value === 'TB' ? document.getElementById('total_size_value').value : '',
       total_size_records: document.getElementById('total_size_records').value,
-      monthly_growth: document.getElementById('monthly_growth').value,
-      monthly_growth_tb: document.getElementById('monthly_growth_tb').value,
+      monthly_growth: document.getElementById('monthly_growth_unit').value === 'GB' ? document.getElementById('monthly_growth_value').value : '',
+      monthly_growth_unit: document.getElementById('monthly_growth_unit').value,
+      monthly_growth_tb: document.getElementById('monthly_growth_unit').value === 'TB' ? document.getElementById('monthly_growth_value').value : '',
       data_source: collectDataSource(),
       data_source_other: document.getElementById('data_source_other').value,
       inflow_units: document.getElementById('inflow_units').value,
@@ -1452,10 +1690,14 @@ function closeModal() {
 
 document.addEventListener('DOMContentLoaded', () => {
   initHighlightButtons();
+  renderLevelCheckOptions('biz');
+  renderLevelCheckOptions('svc');
   refreshCloudPresetOptions();
   onNetworkTypeChange();
   onStorageTypeChange();
   onSupervisorChange();
+  onSupervisorReviewStatusChange();
+  onCloudRoleChange();
   toggleInteractionFields();
 });
 </script>
