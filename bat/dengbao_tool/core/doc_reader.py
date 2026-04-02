@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import re
 from docx import Document
 from docx.oxml.ns import qn
 from models.project_data import (
@@ -107,6 +108,78 @@ def _parse_address_runs(cell):
     except (IndexError, AttributeError):
         pass
     return province, city, county, detail
+
+
+def _parse_cloud_provider_line(text: str):
+    """解析“云服务商为___ 平台安全等级___ 平台名称___ 平台备案编号___”结构。"""
+    raw = (text or "").replace("\n", " ").strip()
+    result = {
+        "provider_name": "",
+        "platform_level": "",
+        "platform_name": "",
+        "platform_code": "",
+    }
+    if not raw:
+        return result
+
+    patterns = {
+        "provider_name": r"云服务商为\s*(.*?)\s*平台安全等级",
+        "platform_level": r"平台安全等级\s*(.*?)\s*平台名称",
+        "platform_name": r"平台名称\s*(.*?)\s*平台备案编号",
+        "platform_code": r"平台备案编号\s*([A-Za-z0-9\-]+)",
+    }
+    for key, pattern in patterns.items():
+        match = re.search(pattern, raw)
+        if match:
+            result[key] = match.group(1).strip(" _")
+
+    if not result["provider_name"] and "云服务商为" not in raw:
+        result["provider_name"] = raw
+    return result
+
+
+def _clean_inline_token(text: str, prefix: str = "") -> str:
+    raw = re.sub(r"\s+", "", (text or ""))
+    if prefix and raw.startswith(prefix):
+        raw = raw[len(prefix):]
+    return raw.strip(" _")
+
+
+def _parse_dual_unit_amount(text: str, prefix: str = ""):
+    """
+    解析形如:
+    - 1_____GB/_____TB
+    - 130GB/_____TB
+    - 1_____GB/8TB
+    - ___________GB/2TB
+    返回 (amount, unit)
+    """
+    raw = re.sub(r"\s+", "", (text or ""))
+    match = re.search(r"^(.*?)GB/(.*?)TB", raw)
+    if not match:
+        cleaned = _clean_inline_token(raw, prefix)
+        return cleaned, "GB" if cleaned else ""
+
+    gb_part = match.group(1)
+    tb_part = match.group(2)
+    if prefix and gb_part.startswith(prefix):
+        gb_part = gb_part[len(prefix):]
+
+    gb_value = gb_part.strip(" _")
+    tb_value = tb_part.strip(" _")
+    if gb_value:
+        return gb_value, "GB"
+    if tb_value:
+        return tb_value, "TB"
+    return "", ""
+
+
+def _parse_records_amount(text: str, prefix: str = "2") -> str:
+    raw = re.sub(r"\s+", "", (text or ""))
+    match = re.search(rf"^{re.escape(prefix)}?(.*?)万条", raw)
+    if not match:
+        return _clean_inline_token(raw, prefix)
+    return match.group(1).strip(" _")
 
 
 def read_beian_docx(path: str) -> ProjectData:
@@ -220,9 +293,11 @@ def read_beian_docx(path: str) -> ProjectData:
     if len(t3.rows) > 7:
         tgt.network_type = _read_first_checked(t3.rows[7].cells[2])
     if len(t3.rows) > 8:
-        interconnect = _read_first_checked(t3.rows[8].cells[1])
+        interconnect = _read_first_checked(t3.rows[8].cells[2])
         if interconnect:
             tgt.interconnect = interconnect
+    if len(t3.rows) > 10:
+        tgt.is_subsystem = _read_first_checked(t3.rows[10].cells[2])
 
     tgt.biz_desc = _cell_text(t3, 3, 2)
     tgt.run_date = _cell_text(t3, 9, 2)
@@ -271,6 +346,29 @@ def read_beian_docx(path: str) -> ProjectData:
                 if name_part:
                     g.review_name = name_part
 
+            supervisor_opts = _read_checked_options(t4.rows[15].cells[2])
+            for parts in supervisor_opts:
+                joined = ''.join(parts)
+                if '有' in joined:
+                    g.has_supervisor = True
+                if '无' in joined:
+                    g.has_supervisor = False
+
+            supervisor_review_opts = _read_checked_options(t4.rows[17].cells[2])
+            for parts in supervisor_review_opts:
+                joined = ''.join(parts)
+                if '已审核' in joined:
+                    g.supervisor_reviewed = True
+                    g.supervisor_review_status = '已审核'
+                elif '未审核' in joined:
+                    g.supervisor_reviewed = False
+                    g.supervisor_review_status = '未审核'
+            supervisor_text = _cell_text(t4, 17, 2)
+            if '附件名称' in supervisor_text:
+                name_part = supervisor_text.split('附件名称')[-1].strip()
+                if name_part:
+                    g.supervisor_doc = name_part
+
             g.filler = _cell_text(t4, 18, 0).replace("填表人：", "")
             g.fill_date = _cell_text(t4, 18, 3).replace("填表日期：", "")
 
@@ -278,13 +376,42 @@ def read_beian_docx(path: str) -> ProjectData:
     if len(doc.tables) > 4:
         t5 = doc.tables[4]
         sc = data.scenario
+        role_opts = _read_checked_options(t5.rows[1].cells[2])
+        role_labels = []
+        for parts in role_opts:
+            joined = ''.join(parts)
+            if '云服务商' in joined:
+                role_labels.append('云服务商')
+            elif '云服务客户' in joined:
+                role_labels.append('云服务客户')
+        if len(role_labels) >= 2:
+            sc.cloud.role = '二者均勾选'
+        elif role_labels:
+            sc.cloud.role = role_labels[0]
+
         cloud_text = _cell_text(t5, 9, 2)
         if cloud_text and cloud_text.strip():
             sc.cloud.enabled = True
-            sc.cloud.provider_name = cloud_text
+            parsed = _parse_cloud_provider_line(cloud_text)
+            sc.cloud.provider_name = parsed["provider_name"]
+            sc.cloud.platform_level = parsed["platform_level"]
+            sc.cloud.platform_name = parsed["platform_name"]
+            sc.cloud.platform_code = parsed["platform_code"]
         client_ops = _cell_text(t5, 10, 2)
         if client_ops:
             sc.cloud.client_ops_location = client_ops
+        provider_scale = _cell_text(t5, 5, 2)
+        if provider_scale:
+            sc.cloud.provider_scale = provider_scale.replace('云服务客户数量', '').replace('个', '').strip(' _')
+        infra_location = _cell_text(t5, 6, 2)
+        if infra_location:
+            sc.cloud.infra_location = infra_location
+        ops_location = _cell_text(t5, 7, 2)
+        if ops_location:
+            sc.cloud.ops_location = ops_location
+        platform_cert = _cell_text(t5, 11, 2)
+        if platform_cert:
+            sc.cloud.platform_cert = platform_cert.replace('附件', '').strip(' _')
 
     # === 表6: 附件清单 (index 5) ===
     if len(doc.tables) > 5:
@@ -320,8 +447,32 @@ def read_beian_docx(path: str) -> ProjectData:
         # 个人信息勾选
         if len(t7.rows) > 3:
             d.personal_info = _read_first_checked(t7.rows[3].cells[1])
-        d.total_size = _cell_text(t7, 4, 1)
-        d.monthly_growth = _cell_text(t7, 5, 1)
+        if len(t7.rows) > 4:
+            total_cell = t7.rows[4].cells[1]
+            if total_cell.paragraphs:
+                total_amount, total_unit = _parse_dual_unit_amount(total_cell.paragraphs[0].text, prefix="1")
+                if total_unit == "TB":
+                    d.total_size_unit = "TB"
+                    d.total_size_tb = total_amount
+                    d.total_size = ""
+                else:
+                    d.total_size_unit = total_unit or "GB"
+                    d.total_size = total_amount
+                    d.total_size_tb = ""
+            if len(total_cell.paragraphs) > 1:
+                d.total_size_records = _parse_records_amount(total_cell.paragraphs[1].text, prefix="2")
+        if len(t7.rows) > 5:
+            month_cell = t7.rows[5].cells[1]
+            if month_cell.paragraphs:
+                month_amount, month_unit = _parse_dual_unit_amount(month_cell.paragraphs[0].text)
+                if month_unit == "TB":
+                    d.monthly_growth_unit = "TB"
+                    d.monthly_growth_tb = month_amount
+                    d.monthly_growth = ""
+                else:
+                    d.monthly_growth_unit = month_unit or "GB"
+                    d.monthly_growth = month_amount
+                    d.monthly_growth_tb = ""
 
     data.project_name = tgt.name or u.unit_name
     return data
