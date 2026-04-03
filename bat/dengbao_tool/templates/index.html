@@ -737,6 +737,9 @@ async function loadOldData() {
           comp.value += sdata.topology_desc;
           addLog('自动填充', '拓扑描述', '', sdata.topology_desc.slice(0,30)+'...');
         }
+        if (sdata.cloud_info) {
+          applySurveyCloudInfo(sdata.cloud_info);
+        }
       } catch(e) { console.log('调查表加载失败:', e); }
     }
 
@@ -927,6 +930,15 @@ function fillBeianData(d) {
 
   const dd = normalizeDataAmountFields(d.data || {});
   setField('data_name_field', dd.data_name);
+  if (dd.data_level) {
+    const el = document.getElementById('data_level');
+    for (let o of el.options) {
+      if (o.value.startsWith(dd.data_level + '-') || o.value === dd.data_level || o.value.startsWith(dd.data_level)) {
+        el.value = o.value;
+        break;
+      }
+    }
+  }
   setField('data_category', dd.data_category);
   setField('data_sec_dept', dd.data_dept);
   setField('data_sec_person', dd.data_person);
@@ -1134,6 +1146,30 @@ function normalizeCloudClientFields(cloud = {}) {
   if (!normalized.platform_name && nameMatch) normalized.platform_name = nameMatch[1].trim();
   if (!normalized.platform_code && codeMatch) normalized.platform_code = codeMatch[1].trim();
   return normalized;
+}
+
+function fillFieldIfEmpty(id, value) {
+  if (!value || !value.toString().trim()) return;
+  const el = document.getElementById(id);
+  if (!el) return;
+  if ((el.value || '').toString().trim()) return;
+  el.value = value.toString().trim();
+}
+
+function applySurveyCloudInfo(cloudInfo = {}) {
+  const hasValue = Object.values(cloudInfo || {}).some(value => (value || '').toString().trim());
+  if (!hasValue) return;
+  document.getElementById('cloud_enabled').checked = true;
+  fillFieldIfEmpty('cloud_role', cloudInfo.role);
+  fillFieldIfEmpty('cloud_service', cloudInfo.service_model);
+  fillFieldIfEmpty('cloud_deploy', cloudInfo.deploy_model);
+  fillFieldIfEmpty('cloud_provider_kind', 'cloud_vendor');
+  fillFieldIfEmpty('cloud_provider', cloudInfo.provider_name);
+  fillFieldIfEmpty('cloud_provider_client', cloudInfo.provider_name);
+  fillFieldIfEmpty('cloud_plat_level', cloudInfo.platform_level || '三级');
+  fillFieldIfEmpty('cloud_plat_name', cloudInfo.platform_name);
+  fillFieldIfEmpty('cloud_plat_code', cloudInfo.platform_code);
+  onCloudRoleChange();
 }
 
 function renderLevelCheckOptions(kind, selectedItems = []) {
@@ -1398,42 +1434,25 @@ let highlightMode = false;
 function toggleHighlightMode() {
   highlightMode = document.getElementById('highlight_mode').checked;
   document.body.style.cursor = highlightMode ? 'crosshair' : '';
-  document.querySelectorAll('.highlight-btn').forEach(btn => {
-    btn.style.display = highlightMode ? 'inline-flex' : 'none';
-  });
 }
 
 function initHighlightButtons() {
-  document.querySelectorAll('#panel-1 .form-row').forEach(row => {
-    const fields = Array.from(row.querySelectorAll('input[type="text"], textarea, select'))
-      .map(el => el.id)
-      .filter(Boolean)
-      .filter(id => !['project_dir', 'batch_root_dir', 'manifest_file', 'beian_template', 'report_template', 'old_beian', 'old_report', 'survey', 'output_dir'].includes(id));
-    if (!fields.length || row.querySelector('.highlight-btn')) return;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'highlight-btn';
-    btn.textContent = '标黄';
-    btn.style.display = 'none';
-    btn.dataset.targets = fields.join(',');
-    btn.addEventListener('click', event => {
+  document.querySelectorAll('#panel-1 input[type="text"], #panel-1 textarea, #panel-1 select').forEach(el => {
+    if (!el.id || ['project_dir', 'batch_root_dir', 'manifest_file', 'beian_template', 'report_template', 'old_beian', 'old_report', 'survey', 'output_dir'].includes(el.id)) return;
+    if (el.dataset.highlightBound === '1') return;
+    el.dataset.highlightBound = '1';
+    el.addEventListener('click', event => {
+      if (!highlightMode) return;
       event.preventDefault();
-      const targetIds = (btn.dataset.targets || '').split(',').filter(Boolean);
-      const allSelected = targetIds.every(id => highlightedFields.has(id));
-      targetIds.forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        if (allSelected) {
-          highlightedFields.delete(id);
-          el.classList.remove('highlight-yellow');
-        } else {
-          highlightedFields.add(id);
-          el.classList.add('highlight-yellow');
-        }
-      });
-      btn.classList.toggle('active', !allSelected);
+      event.stopPropagation();
+      if (highlightedFields.has(el.id)) {
+        highlightedFields.delete(el.id);
+        el.classList.remove('highlight-yellow');
+      } else {
+        highlightedFields.add(el.id);
+        el.classList.add('highlight-yellow');
+      }
     });
-    row.appendChild(btn);
   });
 }
 

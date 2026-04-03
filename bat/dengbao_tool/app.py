@@ -6,6 +6,7 @@ import json
 import glob
 import tempfile
 import hashlib
+import time
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -293,12 +294,13 @@ def preview():
 
         temp_dir = os.path.join(tempfile.gettempdir(), "dengbao_preview")
         os.makedirs(temp_dir, exist_ok=True)
+        preview_token = str(time.time_ns())
 
         if doc_type == "beian":
-            out = os.path.join(temp_dir, f"预览_备案表_{name}.docx")
+            out = os.path.join(temp_dir, f"预览_备案表_{name}_{preview_token}.docx")
             generate_beian(paths["beian_template"], out, data, highlighted_fields=highlighted)
         else:
-            out = os.path.join(temp_dir, f"预览_定级报告_{name}.docx")
+            out = os.path.join(temp_dir, f"预览_定级报告_{name}_{preview_token}.docx")
             generate_report(paths["report_template"], out, report, name, highlighted_fields=highlighted)
 
         os.startfile(out)
@@ -473,10 +475,11 @@ def load_survey():
         return jsonify({"error": "文件不存在"}), 400
     try:
         from core.doc_reader import read_survey_docx
-        img_path, desc = read_survey_docx(survey_path)
+        img_path, desc, cloud_info = read_survey_docx(survey_path)
         return jsonify({
             "topology_image": img_path or "",
             "topology_desc": desc or "",
+            "cloud_info": cloud_info or {},
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
