@@ -145,6 +145,126 @@ def _clean_inline_token(text: str, prefix: str = "") -> str:
     return raw.strip(" _")
 
 
+def _normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "")).strip()
+
+
+def _collect_doc_lines(doc: Document):
+    lines = []
+    for para in doc.paragraphs:
+        text = _normalize_text(para.text)
+        if text:
+            lines.append(text)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                text = _normalize_text(cell.text)
+                if text:
+                    lines.append(text)
+    return lines
+
+
+def _extract_report_code(text: str) -> str:
+    match = re.search(r"([A-Za-z0-9]+(?:-[A-Za-z0-9]+){2,})", text or "")
+    if not match:
+        return ""
+    parts = [part for part in match.group(1).split("-") if part]
+    return "-".join(parts[:2]) if len(parts) >= 2 else match.group(1)
+
+
+def _extract_cloud_provider_name(platform_name: str, raw_text: str) -> str:
+    candidates = [
+        "华为云", "阿里云", "腾讯云", "天翼云", "移动云", "联通云",
+        "金山云", "青云", "UCloud", "AWS", "Azure",
+    ]
+    for candidate in candidates:
+        if candidate in platform_name or candidate in raw_text:
+            return candidate
+    match = re.search(r"([\u4e00-\u9fa5A-Za-z0-9]+云)", platform_name or raw_text or "")
+    return match.group(1) if match else ""
+
+
+def _infer_cloud_role(shape_text: str, raw_text: str) -> str:
+    combined = f"{shape_text} {raw_text}"
+    if "云服务客户业务应用系统" in combined or "云服务客户" in combined:
+        return "云服务客户"
+    if "私有云" in combined and ("自用" in combined or "仅自用" in combined):
+        return "二者均勾选"
+    if "云服务商" in combined or "云平台" in combined:
+        return "云服务商"
+    return ""
+
+
+def _infer_deploy_model(shape_text: str) -> str:
+    raw = shape_text or ""
+    for option in ("私有云", "公有云", "混合云"):
+        if option in raw:
+            return option
+    return ""
+
+
+def _infer_service_model(mode_text: str) -> str:
+    raw = mode_text or ""
+    for option in ("IaaS", "PaaS", "SaaS"):
+        if option in raw:
+            return option
+    return raw.strip()
+
+
+def _parse_survey_cloud_info(doc: Document):
+    lines = _collect_doc_lines(doc)
+    joined = "\n".join(lines)
+    cloud_info = {
+        "provider_name": "",
+        "platform_level": "",
+        "platform_name": "",
+        "platform_code": "",
+        "role": "",
+        "service_model": "",
+        "deploy_model": "",
+    }
+    if "云" not in joined:
+        return cloud_info
+
+    lookup_map = {}
+    for table in doc.tables:
+        for row in table.rows:
+            texts = [_normalize_text(cell.text) for cell in row.cells]
+            if len(texts) < 2:
+                continue
+            label = texts[0]
+            value = " ".join(part for part in texts[1:] if part)
+            if label and value:
+                lookup_map[label] = value
+
+    platform_name = next(
+        (value for key, value in lookup_map.items() if "云计算平台名称" in key or ("平台名称" in key and "云" in value)),
+        "",
+    )
+    if not platform_name:
+        line = next((item for item in lines if "平台名称" in item and "云" in item), "")
+        platform_name = re.sub(r"^.*?平台名称[:：]?\s*", "", line).strip()
+
+    shape_text = next((value for key, value in lookup_map.items() if "云计算形态" in key or "部署模式" in key), "")
+    if not shape_text:
+        shape_text = next((item for item in lines if "云计算形态" in item or "部署模式" in item), "")
+    mode_text = next((value for key, value in lookup_map.items() if "云服务模式" in key or "服务模式" in key), "")
+    if not mode_text:
+        mode_text = next((item for item in lines if "云服务模式" in item or "服务模式" in item), "")
+    report_code = next((value for key, value in lookup_map.items() if "报告编号" in key or "备案编号" in key), "")
+    if not report_code:
+        report_code = next((item for item in lines if "报告编号" in item or "备案编号" in item), "")
+
+    cloud_info["platform_name"] = platform_name
+    cloud_info["platform_level"] = "三级" if platform_name else ""
+    cloud_info["platform_code"] = _extract_report_code(report_code)
+    cloud_info["provider_name"] = _extract_cloud_provider_name(platform_name, joined)
+    cloud_info["role"] = _infer_cloud_role(shape_text, joined)
+    cloud_info["service_model"] = _infer_service_model(mode_text)
+    cloud_info["deploy_model"] = _infer_deploy_model(shape_text)
+    return cloud_info
+
+
 def _parse_dual_unit_amount(text: str, prefix: str = ""):
     """
     解析形如:
@@ -441,6 +561,7 @@ def read_beian_docx(path: str) -> ProjectData:
         t7 = doc.tables[6]
         d = data.data
         d.data_name = _cell_text(t7, 0, 1)
+        d.data_level = _read_first_checked(t7.rows[0].cells[3])
         d.data_category = _cell_text(t7, 1, 1)
         d.data_dept = _cell_text(t7, 2, 1)
         d.data_person = _cell_text(t7, 2, 3)
@@ -593,10 +714,10 @@ def read_report_docx(path: str) -> ReportInfo:
 def read_survey_docx(path: str):
     """
     从等级保护对象基本情况调查表提取拓扑图和描述。
-    返回 (image_path, description_text) 或 (None, None)
+    返回 (image_path, description_text, cloud_info)
     """
     if not path or not os.path.exists(path):
-        return None, None
+        return None, None, {}
 
     doc = Document(path)
     image_path = None
@@ -634,4 +755,4 @@ def read_survey_docx(path: str):
             desc_text = text
             break
 
-    return image_path, desc_text
+    return image_path, desc_text, _parse_survey_cloud_info(doc)

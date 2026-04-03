@@ -3,6 +3,7 @@
 import os
 import shutil
 import re
+from copy import deepcopy
 from docx import Document
 from docx.shared import Inches, RGBColor, Pt
 from docx.oxml.ns import qn
@@ -20,6 +21,9 @@ from core.format_style import (
 def _highlight_run(run, color="yellow"):
     """给 run 添加高亮色"""
     rpr = run._element.get_or_add_rPr()
+    for node in list(rpr):
+        if node.tag == qn('w:highlight'):
+            rpr.remove(node)
     highlight = OxmlElement('w:highlight')
     highlight.set(qn('w:val'), color)
     rpr.append(highlight)
@@ -41,9 +45,45 @@ def _apply_fill_style(run):
     _set_east_asia_font(run, FONT_SONG)
 
 
+def _set_run_font_slots(run, east_asia_font=None, western_font=None):
+    if run is None:
+        return
+    rpr = run._element.get_or_add_rPr()
+    rfonts = rpr.find(qn('w:rFonts'))
+    if rfonts is None:
+        rfonts = OxmlElement('w:rFonts')
+        rpr.append(rfonts)
+    if western_font:
+        run.font.name = western_font
+        rfonts.set(qn('w:ascii'), western_font)
+        rfonts.set(qn('w:hAnsi'), western_font)
+        rfonts.set(qn('w:cs'), western_font)
+    if east_asia_font:
+        rfonts.set(qn('w:eastAsia'), east_asia_font)
+
+
 def _set_run_text(run, text):
     run.text = text
-    _apply_fill_style(run)
+    if run.font.size is None:
+        run.font.size = Pt(10.5)
+    raw_text = str(text or "")
+    has_chinese = bool(re.search(r"[\u4e00-\u9fff]", raw_text))
+    has_western = bool(re.search(r"[A-Za-z0-9@.\-_/]", raw_text))
+    if has_chinese:
+        _set_run_font_slots(
+            run,
+            east_asia_font=FONT_FANG_GB,
+            western_font="Times New Roman" if has_western else (run.font.name or "Times New Roman"),
+        )
+    elif has_western:
+        _set_run_font_slots(run, western_font="Times New Roman")
+
+
+def _fill_text_into_underscores(text, value, min_tail=0):
+    value = str(value or "")
+    if "_" not in text:
+        return value
+    return re.sub(r"_+", value, text, count=1)
 
 
 def _is_placeholder_text(text):
@@ -180,7 +220,10 @@ def _fill_after_keyword(cell, keyword, text):
                 continue
             if found_keyword and (run.text.strip() == '' or
                                    all(c in ' _\u3000' for c in run.text)):
-                _set_run_text(run, '  ' + text)
+                if '_' in run.text:
+                    _fill_placeholder_run(run, text)
+                else:
+                    _set_run_text(run, '  ' + text)
                 return True
     return False
 
@@ -189,12 +232,74 @@ def _copy_run_style(src_run, dst_run):
     """复制 run 的基础字体样式。"""
     if src_run is None or dst_run is None:
         return
+    src_rpr = src_run._element.rPr
+    if src_rpr is not None:
+        dst_rpr = dst_run._element.rPr
+        if dst_rpr is not None:
+            dst_run._element.remove(dst_rpr)
+        dst_run._element.insert(0, deepcopy(src_rpr))
     dst_run.font.name = src_run.font.name
     dst_run.font.size = src_run.font.size
     dst_run.font.bold = src_run.font.bold
     dst_run.font.italic = src_run.font.italic
-    if src_run.font.name:
-        _set_east_asia_font(dst_run, src_run.font.name)
+
+
+def _insert_run_after(run):
+    """在当前 run 后插入一个新 run，并保留段落归属。"""
+    if run is None:
+        return None
+    paragraph = run._parent
+    new_run = paragraph.add_run("")
+    run._element.addnext(new_run._element)
+    return new_run
+
+
+def _fill_placeholder_run(run, value, pattern=r"_+"):
+    """
+    仅替换当前 run 中命中的下划线占位段，并让填充值本身保留下划线效果。
+    不再把 `_` 字符残留在填充值后面。
+    """
+    if run is None:
+        return False
+    value = str(value or "")
+    if not value:
+        return False
+    original_text = run.text or ""
+    match = re.search(pattern, original_text)
+    if not match:
+        return False
+
+    prefix = original_text[:match.start()]
+    suffix = original_text[match.end():]
+
+    if prefix:
+        fill_run = _insert_run_after(run)
+        if fill_run is None:
+            return False
+        _copy_run_style(run, fill_run)
+        suffix_run = None
+        if suffix:
+            suffix_run = _insert_run_after(fill_run)
+            if suffix_run is None:
+                return False
+            _copy_run_style(run, suffix_run)
+        _set_run_text(run, prefix)
+    else:
+        fill_run = run
+        suffix_run = None
+        if suffix:
+            suffix_run = _insert_run_after(run)
+            if suffix_run is None:
+                return False
+            _copy_run_style(run, suffix_run)
+
+    _set_run_text(fill_run, value)
+    fill_run.font.underline = True
+
+    if suffix_run is not None:
+        _set_run_text(suffix_run, suffix)
+
+    return True
 
 
 def _fill_other_option(cell, option_label, text):
@@ -208,7 +313,10 @@ def _fill_other_option(cell, option_label, text):
                 for j in range(i + 1, len(runs)):
                     target = runs[j]
                     if '_' in target.text or target.text.strip() == '':
-                        _set_run_text(target, target.text.replace('_', '', 1).strip() + text)
+                        if '_' in target.text:
+                            _fill_placeholder_run(target, text)
+                        else:
+                            _set_run_text(target, text)
                         return True
     return False
 
@@ -221,7 +329,7 @@ def _fill_underline_in_paragraph(paragraph, index, value):
             continue
         count += 1
         if count == index:
-            _set_run_text(run, value)
+            _fill_placeholder_run(run, value)
             return True
     return False
 
@@ -235,12 +343,27 @@ def _fill_numbered_lines(cell, values):
     for para in cell.paragraphs:
         for run in para.runs:
             if '_' in run.text and value_idx < len(values):
-                _set_run_text(run, values[value_idx])
-                value_idx += 1
-                break
+                if _fill_placeholder_run(run, values[value_idx]):
+                    value_idx += 1
+                    break
         if value_idx >= len(values):
             return True
     return value_idx > 0
+
+
+def _fill_option_line(cell, code, value):
+    code = str(code or "").strip()
+    value = str(value or "").strip()
+    if not code or not value:
+        return False
+    for para in cell.paragraphs:
+        para_text = "".join(run.text for run in para.runs).strip()
+        if not para_text.startswith(code):
+            continue
+        for run in para.runs:
+            if "_" in run.text:
+                return _fill_placeholder_run(run, value)
+    return False
 
 
 def _safe_set_value(table, row, col, text):
@@ -256,16 +379,18 @@ def _safe_set_value(table, row, col, text):
         for p in cell.paragraphs:
             if p.runs:
                 style_run = p.runs[0]
-                p.runs[0].text = str(text)
+                _set_run_text(p.runs[0], str(text))
                 _copy_run_style(style_run, p.runs[0])
-                _apply_fill_style(p.runs[0])
+                _set_run_text(p.runs[0], str(text))
                 for run in p.runs[1:]:
                     run.text = ''
                 return
         # 没有 run 则新建
         if cell.paragraphs:
             run = cell.paragraphs[0].add_run(str(text))
-            _apply_fill_style(run)
+            if cell.paragraphs[0].runs:
+                _copy_run_style(cell.paragraphs[0].runs[0], run)
+            _set_run_text(run, str(text))
     except (IndexError, AttributeError):
         pass
 
@@ -484,8 +609,10 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
 
     if g.biz_level in biz_row_map:
         _check_paragraph_items(t4.rows[biz_row_map[g.biz_level]].cells[1], g.biz_level_items)
+        _check_first_sym_in_paragraph(t4.rows[biz_row_map[g.biz_level]].cells[4].paragraphs[0], True)
     if g.service_level in svc_row_map:
         _check_paragraph_items(t4.rows[svc_row_map[g.service_level]].cells[1], g.service_level_items)
+        _check_first_sym_in_paragraph(t4.rows[svc_row_map[g.service_level]].cells[4].paragraphs[0], True)
     if g.final_level:
         _find_and_check(t4.rows[11].cells[2], g.final_level, multi=True)
 
@@ -556,9 +683,9 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
                 _fill_cloud_provider_line(
                     t5.rows[9].cells[2],
                     sc.cloud.provider_name,
-                    sc.cloud.platform_level,
+                    sc.cloud.platform_level or '三级',
                     sc.cloud.platform_name,
-                    sc.cloud.platform_code,
+                    _normalize_platform_code(sc.cloud.platform_code),
                 )
                 _safe_set_value(t5, 10, 2, sc.cloud.client_ops_location)
                 if sc.cloud.platform_cert:
@@ -600,6 +727,9 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
         t7 = doc.tables[6]
         d = data.data
         _safe_set_value(t7, 0, 1, d.data_name)
+        if d.data_level:
+            code = d.data_level.split('-')[0] if '-' in d.data_level else d.data_level
+            _find_and_check(t7.rows[0].cells[3], code)
         _safe_set_value(t7, 1, 1, d.data_category)
         _safe_set_value(t7, 2, 1, d.data_dept)
         _safe_set_value(t7, 2, 3, d.data_person)
@@ -638,15 +768,15 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
         if d.storage_type:
             code = d.storage_type.split('-')[0]
             _find_and_check(t7.rows[10].cells[1], code)
-            _fill_numbered_lines(t7.rows[10].cells[1], [d.storage_cloud_name or d.storage_cloud])
+            _fill_option_line(t7.rows[10].cells[1], code, d.storage_cloud_name or d.storage_cloud)
         if d.storage_room:
             code = d.storage_room.split('-')[0]
             _find_and_check(t7.rows[11].cells[1], code)
-            _fill_numbered_lines(t7.rows[11].cells[1], [d.storage_room_name])
+            _fill_option_line(t7.rows[11].cells[1], code, d.storage_room_name)
         if d.storage_region:
             code = d.storage_region.split('-')[0]
             _find_and_check(t7.rows[12].cells[1], code)
-            _fill_numbered_lines(t7.rows[12].cells[1], [d.storage_region_name])
+            _fill_option_line(t7.rows[12].cells[1], code, d.storage_region_name)
 
     # ══════ 标黄处理 — 对用户标记的字段在文档中高亮 ══════
     if highlighted_fields:
@@ -706,7 +836,7 @@ def _fill_address(cell, province, city, county, detail):
                         # 下一个run是空格占位
                         for j in range(i + 1, len(p1_runs)):
                             if p1_runs[j].text.strip() == '':
-                                p1_runs[j].text = detail
+                                _set_run_text(p1_runs[j], detail)
                                 return
                         break
     except (IndexError, AttributeError):
@@ -730,9 +860,8 @@ def _fill_underline_field(cell, value):
     for para in cell.paragraphs:
         for run in para.runs:
             if '_' in run.text:
-                # 替换下划线为值
-                _set_run_text(run, re.sub(r'_+', value, run.text, count=1))
-                return
+                if _fill_placeholder_run(run, value):
+                    return
     # fallback: 如果没找到下划线，在第一个run前追加
     if cell.paragraphs and cell.paragraphs[0].runs:
         first = cell.paragraphs[0].runs[0]
@@ -742,13 +871,9 @@ def _fill_underline_field(cell, value):
 def _fill_amount_unit_run(run, amount, unit):
     if run is None or not amount:
         return False
-    text = run.text
     if unit == "TB":
-        text = re.sub(r"_+(?=TB)", str(amount), text, count=1)
-    else:
-        text = re.sub(r"_+(?=GB)", str(amount), text, count=1)
-    _set_run_text(run, text)
-    return True
+        return _fill_placeholder_run(run, str(amount), r"_+(?=TB)")
+    return _fill_placeholder_run(run, str(amount), r"_+(?=GB)")
 
 
 def _fill_total_size_cell(cell, amount, unit, records):
@@ -766,7 +891,7 @@ def _fill_total_size_cell(cell, amount, unit, records):
         _check_first_sym_in_paragraph(cell.paragraphs[1], bool(records))
         runs = cell.paragraphs[1].runs
         if len(runs) > 1 and records:
-            _set_run_text(runs[1], f"2{records}")
+            _fill_placeholder_run(runs[1], records)
     return True
 
 
@@ -784,11 +909,21 @@ def _fill_cloud_provider_line(cell, provider_name, level, platform_name, platfor
     for para in cell.paragraphs:
         for run in para.runs:
             if "_" in run.text and value_idx < len(values):
-                _set_run_text(run, values[value_idx])
-                value_idx += 1
+                if _fill_placeholder_run(run, values[value_idx]):
+                    value_idx += 1
         if value_idx >= len(values):
             return True
     return value_idx > 0
+
+
+def _normalize_platform_code(platform_code):
+    raw = str(platform_code or "").strip()
+    if not raw:
+        return ""
+    parts = [part for part in raw.split("-") if part]
+    if len(parts) >= 2:
+        return "-".join(parts[:2])
+    return raw
 
 
 def _check_paragraph_items(cell, items):
@@ -797,7 +932,7 @@ def _check_paragraph_items(cell, items):
         return False
     for para in cell.paragraphs:
         text = "".join(run.text for run in para.runs if run.text).strip()
-        if text in targets:
+        if any(target in text for target in targets):
             _check_first_sym_in_paragraph(para, True)
     return True
 
@@ -816,9 +951,31 @@ def generate_report(template_path: str, output_path: str,
 
     # ── 第一遍：替换文本、删除说明 ──
     paragraphs_to_remove = []
+    section_body_map = {
+        "1、业务信息描述": report.biz_info_desc,
+        "2、业务信息受到破坏时所侵害客体的确定": report.biz_victim,
+        "3、业务信息受到破坏时对侵害客体的侵害程度的确定": report.biz_degree,
+        "1、系统服务描述": report.svc_desc,
+        "2、系统服务受到破坏时所侵害客体的确定": report.svc_victim,
+        "3、系统服务受到破坏时对侵害客体的侵害程度的确定": report.svc_degree,
+    }
+    pending_section = ""
     for i, p in enumerate(doc.paragraphs):
         text = p.text.strip()
         if not text:
+            continue
+
+        if text in section_body_map:
+            pending_section = text
+            continue
+
+        if pending_section and text.startswith("【"):
+            replacement = section_body_map.get(pending_section, "")
+            if replacement:
+                _replace_paragraph_text(p, replacement)
+            else:
+                paragraphs_to_remove.append(p)
+            pending_section = ""
             continue
 
         # 替换标题（XX → 项目名），保持格式一致
@@ -843,28 +1000,16 @@ def generate_report(template_path: str, output_path: str,
         # 替换参考示例内容
         if "定级对象于XX年" in text and report.responsibility:
             _replace_paragraph_text(p, report.responsibility)
+            continue
         elif "网络中部署了XXX防火墙" in text and report.composition:
             _replace_paragraph_text(p, report.composition)
+            continue
         elif "该定级对象承载着综合办公业务" in text and report.business_desc:
             _replace_paragraph_text(p, report.business_desc)
+            continue
         elif "按照网络安全法" in text and report.security_resp:
             _replace_paragraph_text(p, report.security_resp)
-
-        # 填充业务信息描述/侵害客体/侵害程度
-        if "业务信息描述的内容" in text and report.biz_info_desc:
-            _replace_paragraph_text(p, report.biz_info_desc)
-        elif "对客体的侵害" in text and "业务信息" in text and report.biz_victim:
-            _replace_paragraph_text(p, report.biz_victim)
-        elif "侵害程度的描述" in text and "业务信息" in text and report.biz_degree:
-            _replace_paragraph_text(p, report.biz_degree)
-
-        # 填充系统服务描述/侵害客体/侵害程度
-        if "系统服务描述的内容" in text and report.svc_desc:
-            _replace_paragraph_text(p, report.svc_desc)
-        elif "对客体的侵害" in text and "系统服务" in text and report.svc_victim:
-            _replace_paragraph_text(p, report.svc_victim)
-        elif "侵害程度的描述" in text and "系统服务" in text and report.svc_degree:
-            _replace_paragraph_text(p, report.svc_degree)
+            continue
 
         # 替换子系统表描述
         if "该定级对象包括以下子系统" in text:
@@ -887,6 +1032,7 @@ def generate_report(template_path: str, output_path: str,
                 new_text = text.replace("第X级", report.final_level)
             if new_text != text:
                 _replace_paragraph_text(p, new_text)
+                continue
 
         # 替换 XXX
         if "XXX" in text and "第X级" not in text:
@@ -958,63 +1104,56 @@ def _shade_matrix_tables(doc, report):
     对业务信息和系统服务安全保护等级矩阵表进行涂色。
     根据等级在对应行列交叉处涂黑（深色背景+白色文字）。
     """
-    level_map = {"第一级": 1, "第二级": 2, "第三级": 3, "第四级": 4, "第五级": 5}
-
-    for table in doc.tables:
-        header = _cell_text_safe(table, 0, 0)
-        # 业务信息安全保护等级矩阵表
-        if "受到破坏时所侵害的客体" in header or "客体" in header:
-            level_val = 0
-            # 判断是业务信息还是系统服务矩阵表
-            # 通过查找前面段落的上下文来判断
-            table_xml = table._tbl
-            prev = table_xml.getprevious()
-            is_biz = True
-            while prev is not None:
-                prev_text = prev.text if hasattr(prev, 'text') else ''
-                if '系统服务' in prev_text:
-                    is_biz = False
-                    break
-                if '业务信息' in prev_text:
-                    is_biz = True
-                    break
-                prev = prev.getprevious()
-
-            if is_biz:
-                level_val = level_map.get(report.biz_level, 2)
-            else:
-                level_val = level_map.get(report.svc_level, 2)
-
-            _shade_level_in_matrix(table, level_val)
+    matrix_sources = [
+        ("业务信息安全被破坏时所侵害的客体", report.biz_victim, report.biz_degree),
+        ("系统服务安全被破坏时所侵害的客体", report.svc_victim, report.svc_degree),
+    ]
+    for header_text, victim_text, degree_text in matrix_sources:
+        table = next((item for item in doc.tables if header_text in _cell_text_safe(item, 0, 0)), None)
+        if table is None:
+            continue
+        row_idx = _match_matrix_row(victim_text)
+        col_idx = _match_matrix_col(degree_text)
+        if row_idx is None or col_idx is None:
+            continue
+        _shade_cell_gray(table.rows[row_idx].cells[0])
+        _shade_cell_gray(table.rows[1].cells[col_idx])
+        _shade_cell_gray(table.rows[row_idx].cells[col_idx])
 
 
-def _shade_level_in_matrix(table, level):
-    """
-    在矩阵表中对应等级的单元格涂黑。
-    矩阵表结构：第0行是表头，第1-3行是"公民/法人/其他"或类似客体行，
-    列代表侵害程度（一般/严重/特别严重），交叉处是等级。
-    找到文本为"第X级"（对应level）的单元格涂黑。
-    """
-    level_text = {1: "第一级", 2: "第二级", 3: "第三级", 4: "第四级", 5: "第五级"}
-    target = level_text.get(level, "")
-    if not target:
-        return
-
-    for row in table.rows:
-        for cell in row.cells:
-            text = cell.text.strip()
-            if text == target:
-                _shade_cell_black(cell)
+def _match_matrix_row(text):
+    raw = str(text or "")
+    if "公民" in raw or "法人" in raw or "其他组织" in raw:
+        return 2
+    if "社会秩序" in raw or "公共利益" in raw:
+        return 3
+    if "国家安全" in raw or "地区安全" in raw or "国计民生" in raw:
+        return 4
+    return None
 
 
-def _shade_cell_black(cell):
-    """给单元格设置黑色背景、白色文字"""
+def _match_matrix_col(text):
+    raw = str(text or "")
+    if "特别严重" in raw:
+        return 3
+    if "严重" in raw:
+        return 2
+    if "一般" in raw:
+        return 1
+    return None
+
+
+def _shade_cell_gray(cell):
+    """给单元格设置灰色背景、白色文字。"""
     # 设置单元格底纹
     tc_pr = cell._element.get_or_add_tcPr()
+    for node in list(tc_pr):
+        if node.tag == qn('w:shd'):
+            tc_pr.remove(node)
     shading = OxmlElement('w:shd')
     shading.set(qn('w:val'), 'clear')
     shading.set(qn('w:color'), 'auto')
-    shading.set(qn('w:fill'), '000000')
+    shading.set(qn('w:fill'), '808080')
     tc_pr.append(shading)
     # 设置文字为白色
     for para in cell.paragraphs:
@@ -1024,7 +1163,7 @@ def _shade_cell_black(cell):
 
 def _replace_paragraph_text(paragraph, new_text):
     """替换段落文本，保留第一个 run 的格式"""
-    placeholder_pattern = re.compile(r"(X{4,}|_{3,})")
+    placeholder_pattern = re.compile(r"(身份证号码[:：][X_]{3,}|X{4,}|_{3,})")
     style_run = paragraph.runs[0] if paragraph.runs else None
     if not paragraph.runs:
         paragraph.add_run("")
