@@ -136,6 +136,17 @@ body {
   margin-bottom: 10px;
   gap: 10px;
 }
+.form-row.compact-wrap {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.form-row.compact-wrap > select {
+  min-width: 160px;
+  flex: 0 0 160px;
+}
+.form-row.compact-wrap > input[type="text"] {
+  flex: 0 0 auto;
+}
 .form-row label {
   width: 110px;
   text-align: right;

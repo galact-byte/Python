@@ -289,6 +289,7 @@ def preview():
         report = _dict_to_report(report_data)
         name = _resolve_document_name(paths, form_data, report_data)
         highlighted = form_data.get("highlighted_fields", [])
+        report_highlights = report_data.get("highlighted_fragments", {})
 
         from core.doc_writer import generate_beian, generate_report
 
@@ -301,7 +302,14 @@ def preview():
             generate_beian(paths["beian_template"], out, data, highlighted_fields=highlighted)
         else:
             out = os.path.join(temp_dir, f"预览_定级报告_{name}_{preview_token}.docx")
-            generate_report(paths["report_template"], out, report, name, highlighted_fields=highlighted)
+            generate_report(
+                paths["report_template"],
+                out,
+                report,
+                name,
+                highlighted_fields=highlighted,
+                report_highlights=report_highlights,
+            )
 
         os.startfile(out)
         return jsonify({"success": True, "path": out})
@@ -538,6 +546,7 @@ def _generate_documents(paths, form_data, report_data):
     report = _dict_to_report(report_data)
     name = _resolve_document_name(paths, form_data, report_data)
     highlighted = form_data.get("highlighted_fields", [])
+    report_highlights = report_data.get("highlighted_fragments", {})
 
     from core.doc_writer import generate_beian, generate_report
 
@@ -548,7 +557,14 @@ def _generate_documents(paths, form_data, report_data):
     generate_beian(paths["beian_template"], beian_out, data, highlighted_fields=highlighted)
 
     report_out = os.path.join(out_dir, f"定级报告_{name}.docx")
-    generate_report(paths["report_template"], report_out, report, name, highlighted_fields=highlighted)
+    generate_report(
+        paths["report_template"],
+        report_out,
+        report,
+        name,
+        highlighted_fields=highlighted,
+        report_highlights=report_highlights,
+    )
 
     return {
         "files": [beian_out, report_out],
