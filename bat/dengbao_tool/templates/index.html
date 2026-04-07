@@ -290,7 +290,7 @@
             <div class="form-row"><label>服务范围：</label><select id="svc_scope" onchange="toggleOtherInput(this,'svc_scope_other')"><option value="">请选择</option><option>30-地(市、区)内</option><option>20-全省(区、市)</option><option>10-全国</option><option>99-其他</option></select><input type="text" id="svc_scope_other" placeholder="请填写具体服务范围" style="display:none;width:200px;"></div>
             <div class="form-row"><label>服务对象：</label><select id="svc_target" onchange="toggleOtherInput(this,'svc_target_other')"><option value="">请选择</option><option>1-单位内部人员</option><option>2-社会公众人员</option><option>3-两者均包括</option><option>9-其他</option></select><input type="text" id="svc_target_other" placeholder="请填写具体服务对象" style="display:none;width:200px;"></div>
             <div class="form-row"><label>部署范围：</label><select id="deploy_scope" onchange="toggleOtherInput(this,'deploy_scope_other')"><option value="">请选择</option><option>1-局域网</option><option>2-城域网</option><option>3-广域网</option><option>9-其他</option></select><input type="text" id="deploy_scope_other" placeholder="请填写具体部署范围" style="display:none;width:220px;"></div>
-            <div class="form-row"><label>网络性质：</label><select id="net_type" onchange="onNetworkTypeChange()"><option value="">请选择</option><option>1-业务专网</option><option>2-互联网</option><option>9-其他</option></select><input type="text" id="net_type_other" placeholder="请填写具体网络性质" style="display:none;width:220px;"><input type="text" id="source_ip" placeholder="源站IP地址范围" style="display:none;width:220px;"><input type="text" id="domain" placeholder="域名" style="display:none;width:180px;"><input type="text" id="protocol_port" placeholder="主要协议/端口" style="display:none;width:220px;"></div>
+            <div class="form-row compact-wrap"><label>网络性质：</label><select id="net_type" onchange="onNetworkTypeChange()"><option value="">请选择</option><option>1-业务专网</option><option>2-互联网</option><option>9-其他</option></select><input type="text" id="net_type_other" placeholder="请填写具体网络性质" style="display:none;width:220px;"><input type="text" id="source_ip" placeholder="源站IP地址范围" style="display:none;width:200px;"><input type="text" id="domain" placeholder="域名" style="display:none;width:160px;"><input type="text" id="protocol_port" placeholder="主要协议/端口" style="display:none;width:180px;"></div>
             <div class="form-row"><label>互联情况：</label><select id="interconnect" onchange="toggleOtherInput(this,'interconnect_other')"><option value="">请选择</option><option>1-与其他行业系统连接</option><option>2-与本行业其他单位系统连接</option><option>3-与本单位其他系统连接</option><option>9-其他</option></select><input type="text" id="interconnect_other" placeholder="请填写具体互联情况" style="display:none;width:220px;"></div>
             <div class="form-row"><label>运行时间：</label><div class="date-field"><input type="date" id="run_date" data-field="target.run_date"><button type="button" class="date-trigger" onclick="openDatePicker('run_date')" aria-label="选择运行时间"></button></div></div>
           </div>
@@ -965,6 +965,7 @@ function fillBeianData(d) {
 }
 
 function fillReportData(r) {
+  resetReportHighlightedFragments();
   setField('rpt_responsibility', r.responsibility);
   setField('rpt_composition', r.composition);
   setField('rpt_business', r.business_desc);
@@ -1168,7 +1169,11 @@ function applySurveyCloudInfo(cloudInfo = {}) {
   fillFieldIfEmpty('cloud_provider_client', cloudInfo.provider_name);
   fillFieldIfEmpty('cloud_plat_level', cloudInfo.platform_level || '三级');
   fillFieldIfEmpty('cloud_plat_name', cloudInfo.platform_name);
-  fillFieldIfEmpty('cloud_plat_code', cloudInfo.platform_code);
+  if ((cloudInfo.platform_code || '').toString().trim()) {
+    const codeEl = document.getElementById('cloud_plat_code');
+    codeEl.value = cloudInfo.platform_code.toString().trim();
+    codeEl.classList.add('auto-filled');
+  }
   onCloudRoleChange();
 }
 
@@ -1313,8 +1318,12 @@ function toggleOtherInput(selectEl, inputId) {
     input.value = '';
     return;
   }
-  if (!input.value.trim() && ['svc_scope_other', 'svc_target_other', 'deploy_scope_other', 'net_type_other', 'interconnect_other'].includes(inputId)) {
-    input.value = '本单位';
+  const defaultValues = {
+    svc_scope_other: '本单位',
+    interconnect_other: '无连接',
+  };
+  if (!input.value.trim() && Object.prototype.hasOwnProperty.call(defaultValues, inputId)) {
+    input.value = defaultValues[inputId];
   }
 }
 
@@ -1429,6 +1438,19 @@ function showAlert(containerId, msg, type) {
 
 // ── 标黄功能 ──
 const highlightedFields = new Set();
+const reportHighlightedFragments = {};
+const REPORT_TEXTAREA_IDS = [
+  'rpt_responsibility',
+  'rpt_composition',
+  'rpt_business',
+  'rpt_security',
+  'rpt_biz_info',
+  'rpt_biz_victim',
+  'rpt_biz_degree',
+  'rpt_svc_desc',
+  'rpt_svc_victim',
+  'rpt_svc_degree',
+];
 let highlightMode = false;
 
 function toggleHighlightMode() {
@@ -1436,9 +1458,53 @@ function toggleHighlightMode() {
   document.body.style.cursor = highlightMode ? 'crosshair' : '';
 }
 
+function updateReportHighlightState(el) {
+  const fragments = reportHighlightedFragments[el.id] || [];
+  if (fragments.length) {
+    el.classList.add('highlight-yellow');
+    el.title = `已标黄 ${fragments.length} 段`;
+  } else {
+    el.classList.remove('highlight-yellow');
+    el.removeAttribute('title');
+  }
+}
+
+function handleReportTextHighlight(el) {
+  if (!highlightMode) return;
+  const start = el.selectionStart;
+  const end = el.selectionEnd;
+  if (typeof start !== 'number' || typeof end !== 'number' || end <= start) return;
+  const snippet = (el.value || '').slice(start, end).trim();
+  if (!snippet) return;
+  const fragments = reportHighlightedFragments[el.id] || [];
+  const idx = fragments.indexOf(snippet);
+  if (idx >= 0) fragments.splice(idx, 1);
+  else fragments.push(snippet);
+  reportHighlightedFragments[el.id] = fragments;
+  updateReportHighlightState(el);
+}
+
+function resetReportHighlightedFragments() {
+  REPORT_TEXTAREA_IDS.forEach(id => {
+    reportHighlightedFragments[id] = [];
+    const el = document.getElementById(id);
+    if (el) updateReportHighlightState(el);
+  });
+}
+
+function collectReportHighlightedFragments() {
+  const result = {};
+  REPORT_TEXTAREA_IDS.forEach(id => {
+    const fragments = (reportHighlightedFragments[id] || []).filter(Boolean);
+    if (fragments.length) result[id] = fragments.slice();
+  });
+  return result;
+}
+
 function initHighlightButtons() {
   document.querySelectorAll('#panel-1 input[type="text"], #panel-1 textarea, #panel-1 select').forEach(el => {
     if (!el.id || ['project_dir', 'batch_root_dir', 'manifest_file', 'beian_template', 'report_template', 'old_beian', 'old_report', 'survey', 'output_dir'].includes(el.id)) return;
+    if (REPORT_TEXTAREA_IDS.includes(el.id)) return;
     if (el.dataset.highlightBound === '1') return;
     el.dataset.highlightBound = '1';
     el.addEventListener('click', event => {
@@ -1453,6 +1519,17 @@ function initHighlightButtons() {
         el.classList.add('highlight-yellow');
       }
     });
+  });
+}
+
+function initReportHighlightSelections() {
+  REPORT_TEXTAREA_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.partialHighlightBound === '1') return;
+    el.dataset.partialHighlightBound = '1';
+    el.addEventListener('mouseup', () => handleReportTextHighlight(el));
+    el.addEventListener('keyup', () => handleReportTextHighlight(el));
+    updateReportHighlightState(el);
   });
 }
 
@@ -1643,7 +1720,8 @@ function collectReportData() {
     svc_degree: document.getElementById('rpt_svc_degree').value,
     svc_level: document.getElementById('svc_level').value,
     final_level: document.getElementById('final_level').textContent,
-    subsystems: []
+    subsystems: [],
+    highlighted_fragments: collectReportHighlightedFragments(),
   };
 }
 
@@ -1709,6 +1787,7 @@ function closeModal() {
 
 document.addEventListener('DOMContentLoaded', () => {
   initHighlightButtons();
+  initReportHighlightSelections();
   renderLevelCheckOptions('biz');
   renderLevelCheckOptions('svc');
   refreshCloudPresetOptions();
