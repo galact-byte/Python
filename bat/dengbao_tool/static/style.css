@@ -246,6 +246,78 @@ input[type="checkbox"] {
   width: 16px; height: 16px;
   accent-color: var(--primary);
 }
+
+/* ── 表四 — 应用场景子表单 ── */
+.scenario-fields {
+  padding: 12px 14px;
+  margin: 4px 0 4px 18px;
+  background: color-mix(in srgb, var(--panel-muted) 55%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  border-radius: 0 8px 8px 0;
+}
+.scenario-fields .form-row { margin-bottom: 8px; }
+.scenario-fields .form-row label {
+  width: 130px;
+  font-size: 12px;
+}
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px 14px;
+  flex: 1;
+  align-items: center;
+}
+.checkbox-grid label {
+  width: auto !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left !important;
+  font-size: 13px !important;
+  color: var(--text) !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.checkbox-grid input[type="checkbox"] { flex-shrink: 0; }
+.checkbox-grid .checkbox-other-input {
+  grid-column: 1 / -1;
+  flex: none;
+  width: 100%;
+}
+.checkbox-other-input { width: 100% !important; }
+.scenario-subgroup {
+  margin-top: 12px;
+  padding: 10px 14px 4px;
+  border: 1px dashed color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+}
+.scenario-subgroup-title {
+  font-size: 12px;
+  color: var(--primary);
+  margin: 0 0 8px 0;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.suffix-note {
+  margin-left: 4px;
+  color: var(--text-sec);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* 多行输入组（每行一个独立 input，序列化为换行分隔字符串） */
+.multi-line-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.multi-line-inputs input[type="text"] {
+  flex: 1;
+  width: 100%;
+}
 .level-checks {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

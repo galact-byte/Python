@@ -371,27 +371,84 @@
           <div class="form-group">
             <div class="form-group-title">物联网</div>
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="iot_enabled" onchange="toggleSection('iot')"><label for="iot_enabled">物联网系统</label></div></div>
-            <div class="iot-fields">
-              <div class="form-row"><label>感知层：</label><input type="text" id="iot_perception" disabled></div>
-              <div class="form-row"><label>传输层：</label><input type="text" id="iot_transport" disabled></div>
+            <div class="iot-fields scenario-fields">
+              <div class="form-row"><label>感知层（多选）：</label>
+                <div class="checkbox-grid">
+                  <label><input type="checkbox" data-iot-perc value="感知节点" disabled> 感知节点</label>
+                  <label><input type="checkbox" data-iot-perc value="感知网关" disabled> 感知网关</label>
+                  <label><input type="checkbox" data-iot-perc value="RFID标签" disabled> RFID标签</label>
+                  <label><input type="checkbox" data-iot-perc value="RFID读写器" disabled> RFID读写器</label>
+                  <label><input type="checkbox" id="iot_perc_other_chk" onchange="toggleCheckboxOther(this,'iot_perc_other')" disabled> 其他</label>
+                  <input type="text" id="iot_perc_other" class="checkbox-other-input" placeholder="其他感知层说明" style="display:none;" disabled>
+                </div>
+              </div>
+              <div class="form-row"><label>传输层（多选）：</label>
+                <div class="checkbox-grid">
+                  <label><input type="checkbox" data-iot-trans value="互联网" disabled> 互联网</label>
+                  <label><input type="checkbox" data-iot-trans value="专用网" disabled> 专用网</label>
+                  <label><input type="checkbox" data-iot-trans value="移动通信网" disabled> 移动通信网</label>
+                  <label><input type="checkbox" id="iot_trans_other_chk" onchange="toggleCheckboxOther(this,'iot_trans_other')" disabled> 其他</label>
+                  <input type="text" id="iot_trans_other" class="checkbox-other-input" placeholder="其他传输层说明" style="display:none;" disabled>
+                </div>
+              </div>
             </div>
           </div>
 
           <div class="form-group">
             <div class="form-group-title">工业控制</div>
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="ics_enabled" onchange="toggleSection('ics')"><label for="ics_enabled">工业控制系统</label></div></div>
-            <div class="ics-fields">
-              <div class="form-row"><label>功能层次：</label><input type="text" id="ics_layer" disabled></div>
-              <div class="form-row"><label>系统组成：</label><input type="text" id="ics_comp" disabled></div>
+            <div class="ics-fields scenario-fields">
+              <div class="form-row"><label>功能层次（多选）：</label>
+                <div class="checkbox-grid">
+                  <label><input type="checkbox" data-ics-layer value="生产管理层" disabled> 生产管理层</label>
+                  <label><input type="checkbox" data-ics-layer value="过程监控层" disabled> 过程监控层</label>
+                  <label><input type="checkbox" data-ics-layer value="现场控制层" disabled> 现场控制层</label>
+                  <label><input type="checkbox" data-ics-layer value="现场设备层" disabled> 现场设备层</label>
+                </div>
+              </div>
+              <div class="form-row"><label>系统组成（多选）：</label>
+                <div class="checkbox-grid">
+                  <label><input type="checkbox" data-ics-comp value="数据采集与监视控制系统（SCADA）" disabled> 数据采集与监视控制系统（SCADA）</label>
+                  <label><input type="checkbox" data-ics-comp value="分布式控制系统（DCS）" disabled> 分布式控制系统（DCS）</label>
+                  <label><input type="checkbox" data-ics-comp value="可编程逻辑控制器（PLC）" disabled> 可编程逻辑控制器（PLC）</label>
+                  <label><input type="checkbox" data-ics-comp value="远程终端单元（RTU）" disabled> 远程终端单元（RTU）</label>
+                  <label><input type="checkbox" data-ics-comp value="主终端单元（MTU)" disabled> 主终端单元（MTU）</label>
+                  <label><input type="checkbox" data-ics-comp value="上位机（SC）" disabled> 上位机（SC）</label>
+                  <label><input type="checkbox" id="ics_comp_other_chk" onchange="toggleCheckboxOther(this,'ics_comp_other')" disabled> 其他</label>
+                  <input type="text" id="ics_comp_other" class="checkbox-other-input" placeholder="其他系统组成说明" style="display:none;" disabled>
+                </div>
+              </div>
             </div>
           </div>
 
           <div class="form-group">
             <div class="form-group-title">大数据</div>
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="bigdata_enabled" onchange="toggleSection('bigdata')"><label for="bigdata_enabled">采用大数据技术</label></div></div>
-            <div class="bigdata-fields">
-              <div class="form-row"><label>系统组成：</label><input type="text" id="bigdata_comp" disabled></div>
-              <div class="form-row"><label>出境情况：</label><select id="bigdata_cross" disabled><option>无出境需求</option><option>有出境需求</option></select></div>
+            <div class="bigdata-fields scenario-fields">
+              <div class="form-row"><label>系统组成（多选）：</label>
+                <div class="checkbox-grid">
+                  <label><input type="checkbox" data-bigdata-comp value="大数据平台" onchange="onBigdataCompChange()" disabled> 大数据平台</label>
+                  <label><input type="checkbox" data-bigdata-comp value="大数据应用" onchange="onBigdataCompChange()" disabled> 大数据应用</label>
+                  <label><input type="checkbox" data-bigdata-comp value="大数据资源" onchange="onBigdataCompChange()" disabled> 大数据资源</label>
+                </div>
+              </div>
+              <div class="form-row"><label>出境情况：</label><select id="bigdata_cross" disabled><option value="">请选择</option><option>无出境需求</option><option>有出境需求</option></select></div>
+
+              <div id="bigdata_platform_fields" class="scenario-subgroup" style="display:none;">
+                <div class="scenario-subgroup-title">大数据平台填写</div>
+                <div class="form-row"><label>大数据应用数量：</label><input type="text" id="bigdata_platform_scale" placeholder="如 3" disabled><span class="suffix-note">个</span></div>
+                <div class="form-row"><label>基础设施地点：</label><input type="text" id="bigdata_platform_infra" placeholder="如 山西省运城市河津市" disabled></div>
+                <div class="form-row"><label>运维地点：</label><input type="text" id="bigdata_platform_ops" placeholder="如 山西省运城市河津市" disabled></div>
+              </div>
+
+              <div id="bigdata_client_fields" class="scenario-subgroup" style="display:none;">
+                <div class="scenario-subgroup-title">大数据应用、大数据资源填写</div>
+                <div class="form-row"><label>平台服务商：</label><input type="text" id="bigdata_platform_provider" placeholder="如 阿里云、华为云、某某科技公司" disabled></div>
+                <div class="form-row"><label>平台安全等级：</label><select id="bigdata_platform_level" disabled><option value="">请选择</option><option>第一级</option><option>第二级</option><option>第三级</option><option>第四级</option><option>第五级</option></select></div>
+                <div class="form-row"><label>平台名称：</label><input type="text" id="bigdata_platform_name" placeholder="如 阿里云大数据平台" disabled></div>
+                <div class="form-row"><label>平台备案编号：</label><input type="text" id="bigdata_platform_code" placeholder="如 11000000000000-00000" disabled></div>
+                <div class="form-row"><label>备案证明附件：</label><input type="text" id="bigdata_platform_cert" placeholder="附件名称（如《阿里云大数据平台备案证明》）" disabled></div>
+              </div>
             </div>
           </div>
         </div>
@@ -451,9 +508,31 @@
               </div>
             </div>
             <hr style="border-color:var(--border);margin:12px 0;">
-            <div class="form-row"><label>数据来源：</label><div class="checkbox-row checkbox-wrap"><label><input type="checkbox" id="data_source_collect"> 1-系统采集</label><label><input type="checkbox" id="data_source_generate"> 2-系统产生</label><label><input type="checkbox" id="data_source_manual"> 3-人工填报</label><label><input type="checkbox" id="data_source_trade"> 4-交易购买</label><label><input type="checkbox" id="data_source_share"> 5-共享交换</label><label><input type="checkbox" id="data_source_other_chk" onchange="toggleCheckboxOther(this,'data_source_other')"> 9-其他</label><input type="text" id="data_source_other" placeholder="请填写其他来源" style="display:none;width:220px;"></div></div>
-            <div class="form-row"><label>数据来源单位：</label><textarea id="inflow_units" rows="3" placeholder="每行一个来源单位，最多可填 3 个"></textarea></div>
-            <div class="form-row"><label>数据流出单位：</label><textarea id="outflow_units" rows="3" placeholder="每行一个流出单位，最多可填 3 个"></textarea></div>
+            <div class="form-row"><label>数据来源：</label>
+              <div class="checkbox-grid">
+                <label><input type="checkbox" id="data_source_collect"> 1-系统采集</label>
+                <label><input type="checkbox" id="data_source_generate"> 2-系统产生</label>
+                <label><input type="checkbox" id="data_source_manual"> 3-人工填报</label>
+                <label><input type="checkbox" id="data_source_trade"> 4-交易购买</label>
+                <label><input type="checkbox" id="data_source_share"> 5-共享交换</label>
+                <label><input type="checkbox" id="data_source_other_chk" onchange="toggleCheckboxOther(this,'data_source_other')"> 9-其他</label>
+                <input type="text" id="data_source_other" class="checkbox-other-input" placeholder="请填写其他来源" style="display:none;">
+              </div>
+            </div>
+            <div class="form-row"><label>数据来源单位：</label>
+              <div class="multi-line-inputs">
+                <input type="text" data-inflow placeholder="来源单位 1">
+                <input type="text" data-inflow placeholder="来源单位 2">
+                <input type="text" data-inflow placeholder="来源单位 3">
+              </div>
+            </div>
+            <div class="form-row"><label>数据流出单位：</label>
+              <div class="multi-line-inputs">
+                <input type="text" data-outflow placeholder="流出单位 1">
+                <input type="text" data-outflow placeholder="流出单位 2">
+                <input type="text" data-outflow placeholder="流出单位 3">
+              </div>
+            </div>
             <div class="form-row"><label>与其他处理者交互：</label><select id="interaction" onchange="toggleInteractionFields()"><option value="">请选择</option><option>1-对外提供给</option><option>2-委托处理</option><option>3-共同处理</option><option>4-无交互</option></select><input type="text" id="interaction_other" placeholder="请填写对方名称/具体方式" style="display:none;width:240px;"></div>
             <div class="form-row"><label>存储位置-类别：</label><select id="storage_type" onchange="onStorageTypeChange()"><option value="">请选择</option><option>1-私有云</option><option>2-公有云</option><option>3-混合云</option><option>4-政务云</option><option>5-非云计算平台</option></select><input type="text" id="storage_cloud_name" placeholder="请填写平台/位置名称" style="width:240px;"></div>
             <div class="form-row"><label>存储位置-机房：</label><select id="storage_room"><option value="">请选择</option><option>1-本单位机房</option><option>2-外单位机房</option><option>3-国内第三方托管机房</option></select><input type="text" id="storage_room_name" placeholder="请填写机房名称/地址" style="width:240px;"></div>
@@ -469,7 +548,8 @@
             <div class="form-row"><label>(二) 对象构成：</label><textarea id="rpt_composition" rows="3"></textarea></div>
             <div class="form-row"><label>网络拓扑图：</label><input type="text" id="rpt_topology" placeholder="拓扑图文件路径 (.png/.jpg)"><button class="btn-sm" onclick="browseImage('rpt_topology')">选择</button></div>
             <div class="form-row"><label>(三) 承载业务：</label><textarea id="rpt_business" rows="3"></textarea></div>
-            <div class="form-row"><label>(四) 安全责任：</label><textarea id="rpt_security" rows="3"></textarea></div>
+            <div class="form-row"><label>(四) 承载数据：</label><textarea id="rpt_carried_data" rows="3" placeholder="如：该定级对象承载的数据主要为升压站监控数据，包括..."></textarea></div>
+            <div class="form-row"><label>(五) 安全责任：</label><textarea id="rpt_security" rows="3"></textarea></div>
           </div>
           <div class="form-group">
             <div class="form-group-title">二、等级确定描述</div>
@@ -914,19 +994,28 @@ function fillBeianData(d) {
 
   const iot = s.iot || {};
   document.getElementById('iot_enabled').checked = !!iot.enabled;
-  setField('iot_perception', iot.perception);
-  setField('iot_transport', iot.transport);
+  fillMultiCheckbox('data-iot-perc', iot.perception, 'iot_perc_other_chk', 'iot_perc_other');
+  fillMultiCheckbox('data-iot-trans', iot.transport, 'iot_trans_other_chk', 'iot_trans_other');
 
   const ics = s.ics || {};
   document.getElementById('ics_enabled').checked = !!ics.enabled;
-  setField('ics_layer', ics.function_layer);
-  setField('ics_comp', ics.composition);
+  fillMultiCheckbox('data-ics-layer', ics.function_layer);
+  fillMultiCheckbox('data-ics-comp', ics.composition, 'ics_comp_other_chk', 'ics_comp_other');
 
   const bigdata = s.bigdata || {};
   document.getElementById('bigdata_enabled').checked = !!bigdata.enabled;
-  setField('bigdata_comp', bigdata.composition);
+  fillMultiCheckbox('data-bigdata-comp', bigdata.composition);
   setField('bigdata_cross', bigdata.cross_border);
+  setField('bigdata_platform_scale', bigdata.platform_scale);
+  setField('bigdata_platform_infra', bigdata.platform_infra);
+  setField('bigdata_platform_ops', bigdata.platform_ops);
+  setField('bigdata_platform_provider', bigdata.platform_provider);
+  setField('bigdata_platform_level', bigdata.platform_level);
+  setField('bigdata_platform_name', bigdata.platform_name);
+  setField('bigdata_platform_code', bigdata.platform_code);
+  setField('bigdata_platform_cert', bigdata.platform_cert);
   ['cloud', 'mobile', 'iot', 'ics', 'bigdata'].forEach(toggleSection);
+  onBigdataCompChange();
 
   const dd = normalizeDataAmountFields(d.data || {});
   setField('data_name_field', dd.data_name);
@@ -950,8 +1039,8 @@ function fillBeianData(d) {
   // 个人信息 select
   if (dd.personal_info) { const el = document.getElementById('personal_info'); for (let o of el.options) { if (o.value.startsWith(dd.personal_info+'-') || o.value === dd.personal_info || o.value.startsWith(dd.personal_info)) { el.value = o.value; break; } } }
   fillDataSource(dd.data_source, dd.data_source_other);
-  setField('inflow_units', dd.inflow_units);
-  setField('outflow_units', dd.outflow_units);
+  fillMultiLineInputs('data-inflow', dd.inflow_units);
+  fillMultiLineInputs('data-outflow', dd.outflow_units);
   if (dd.interaction) { const el = document.getElementById('interaction'); for (let o of el.options) { if (o.value.startsWith(dd.interaction+'-') || o.value === dd.interaction || o.value.startsWith(dd.interaction)) { el.value = o.value; break; } } }
   setField('interaction_other', dd.interaction_other);
   toggleInteractionFields();
@@ -968,6 +1057,7 @@ function fillReportData(r) {
   setField('rpt_responsibility', r.responsibility);
   setField('rpt_composition', r.composition);
   setField('rpt_business', r.business_desc);
+  setField('rpt_carried_data', r.carried_data);
   setField('rpt_security', r.security_resp);
   setField('rpt_topology', r.topology_image);
   setField('rpt_biz_info', r.biz_info_desc);
@@ -1297,6 +1387,72 @@ function toggleSection(name) {
     el.disabled = !enabled;
   });
   if (name === 'cloud') onCloudRoleChange();
+  if (name === 'bigdata') onBigdataCompChange();
+}
+
+function onBigdataCompChange() {
+  const enabled = document.getElementById('bigdata_enabled').checked;
+  const checkedValues = Array.from(document.querySelectorAll('input[data-bigdata-comp]:checked')).map(el => el.value);
+  const showPlatform = enabled && checkedValues.includes('大数据平台');
+  const showClient = enabled && (checkedValues.includes('大数据应用') || checkedValues.includes('大数据资源'));
+  document.getElementById('bigdata_platform_fields').style.display = showPlatform ? '' : 'none';
+  document.getElementById('bigdata_client_fields').style.display = showClient ? '' : 'none';
+}
+
+function collectMultiCheckbox(dataAttr, otherChkId='', otherInputId='') {
+  const vals = Array.from(document.querySelectorAll(`input[${dataAttr}]:checked`)).map(el => el.value);
+  if (otherChkId) {
+    const chk = document.getElementById(otherChkId);
+    const other = otherInputId ? (document.getElementById(otherInputId) || {}).value : '';
+    if (chk && chk.checked && other && other.trim()) {
+      vals.push(other.trim());
+    }
+  }
+  return vals.join(',');
+}
+
+function fillMultiCheckbox(dataAttr, rawValue, otherChkId='', otherInputId='') {
+  const tokens = (rawValue || '').split(',').map(t => t.trim()).filter(Boolean);
+  const boxes = Array.from(document.querySelectorAll(`input[${dataAttr}]`));
+  const knownValues = new Set(boxes.map(b => b.value));
+  boxes.forEach(b => { b.checked = false; });
+  const otherTokens = [];
+  tokens.forEach(token => {
+    let matched = false;
+    for (const b of boxes) {
+      if (token === b.value || b.value.includes(token) || token.includes(b.value)) {
+        b.checked = true;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) otherTokens.push(token);
+  });
+  if (otherChkId) {
+    const chk = document.getElementById(otherChkId);
+    const other = otherInputId ? document.getElementById(otherInputId) : null;
+    if (chk) {
+      chk.checked = otherTokens.length > 0;
+      if (other) {
+        other.value = otherTokens.join('、');
+        toggleCheckboxOther(chk, otherInputId);
+      }
+    }
+  }
+}
+
+function collectMultiLineInputs(dataAttr) {
+  const inputs = Array.from(document.querySelectorAll(`input[${dataAttr}]`));
+  return inputs.map(el => (el.value || '').trim()).filter(Boolean).join('\n');
+}
+
+function fillMultiLineInputs(dataAttr, rawValue) {
+  const lines = (rawValue || '').split(/\r?\n|、|；|;/).map(t => t.trim()).filter(Boolean);
+  const inputs = Array.from(document.querySelectorAll(`input[${dataAttr}]`));
+  inputs.forEach((el, i) => {
+    el.value = lines[i] || '';
+    if (lines[i]) el.classList.add('auto-filled');
+  });
 }
 
 function onTargetTypeChange() {
@@ -1572,18 +1728,26 @@ function collectFormData() {
       },
       iot: {
         enabled: document.getElementById('iot_enabled').checked,
-        perception: document.getElementById('iot_perception').value,
-        transport: document.getElementById('iot_transport').value,
+        perception: collectMultiCheckbox('data-iot-perc', 'iot_perc_other_chk', 'iot_perc_other'),
+        transport: collectMultiCheckbox('data-iot-trans', 'iot_trans_other_chk', 'iot_trans_other'),
       },
       ics: {
         enabled: document.getElementById('ics_enabled').checked,
-        function_layer: document.getElementById('ics_layer').value,
-        composition: document.getElementById('ics_comp').value,
+        function_layer: collectMultiCheckbox('data-ics-layer'),
+        composition: collectMultiCheckbox('data-ics-comp', 'ics_comp_other_chk', 'ics_comp_other'),
       },
       bigdata: {
         enabled: document.getElementById('bigdata_enabled').checked,
-        composition: document.getElementById('bigdata_comp').value,
+        composition: collectMultiCheckbox('data-bigdata-comp'),
         cross_border: document.getElementById('bigdata_cross').value,
+        platform_scale: document.getElementById('bigdata_platform_scale').value,
+        platform_infra: document.getElementById('bigdata_platform_infra').value,
+        platform_ops: document.getElementById('bigdata_platform_ops').value,
+        platform_provider: document.getElementById('bigdata_platform_provider').value,
+        platform_level: document.getElementById('bigdata_platform_level').value,
+        platform_name: document.getElementById('bigdata_platform_name').value,
+        platform_code: document.getElementById('bigdata_platform_code').value,
+        platform_cert: document.getElementById('bigdata_platform_cert').value,
       },
     },
     attachment: {
@@ -1610,8 +1774,8 @@ function collectFormData() {
       monthly_growth_tb: document.getElementById('monthly_growth_unit').value === 'TB' ? document.getElementById('monthly_growth_value').value : '',
       data_source: collectDataSource(),
       data_source_other: document.getElementById('data_source_other').value,
-      inflow_units: document.getElementById('inflow_units').value,
-      outflow_units: document.getElementById('outflow_units').value,
+      inflow_units: collectMultiLineInputs('data-inflow'),
+      outflow_units: collectMultiLineInputs('data-outflow'),
       interaction: document.getElementById('interaction').value,
       interaction_other: document.getElementById('interaction_other').value,
       storage_type: document.getElementById('storage_type').value,
@@ -1633,6 +1797,7 @@ function collectReportData() {
     composition: document.getElementById('rpt_composition').value,
     topology_image: document.getElementById('rpt_topology').value,
     business_desc: document.getElementById('rpt_business').value,
+    carried_data: document.getElementById('rpt_carried_data').value,
     security_resp: document.getElementById('rpt_security').value,
     biz_info_desc: document.getElementById('rpt_biz_info').value,
     biz_victim: document.getElementById('rpt_biz_victim').value,
@@ -1717,6 +1882,7 @@ document.addEventListener('DOMContentLoaded', () => {
   onSupervisorChange();
   onSupervisorReviewStatusChange();
   onCloudRoleChange();
+  onBigdataCompChange();
   toggleInteractionFields();
 });
 </script>

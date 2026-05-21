@@ -1,6 +1,27 @@
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 output/
+output_test/
 .omc/
 batch_update_state.json
 start-dev.bat
+
+# 模板备份与 Word 临时文件
+*.bak
+~$*.docx
+~$*.doc
+
+# 编辑器/工具
+.vscode/
+.idea/
+*.swp
+.pytest_cache/
+.DS_Store
+Thumbs.db
+
+# AI 配置文件（不应推送到远端）
+CLAUDE.md
+GEMINI.md
+AGENTS.md

@@ -295,12 +295,13 @@ def preview():
         temp_dir = os.path.join(tempfile.gettempdir(), "dengbao_preview")
         os.makedirs(temp_dir, exist_ok=True)
         preview_token = str(time.time_ns())
+        prefix = _resolve_filename_prefix(paths, form_data, report_data)
 
         if doc_type == "beian":
-            out = os.path.join(temp_dir, f"预览_备案表_{name}_{preview_token}.docx")
+            out = os.path.join(temp_dir, f"预览_{prefix}-备案表_{preview_token}.docx")
             generate_beian(paths["beian_template"], out, data, highlighted_fields=highlighted)
         else:
-            out = os.path.join(temp_dir, f"预览_定级报告_{name}_{preview_token}.docx")
+            out = os.path.join(temp_dir, f"预览_{prefix}-定级报告_{preview_token}.docx")
             generate_report(paths["report_template"], out, report, name, highlighted_fields=highlighted)
 
         os.startfile(out)
@@ -544,10 +545,12 @@ def _generate_documents(paths, form_data, report_data):
     out_dir = paths["output_dir"]
     os.makedirs(out_dir, exist_ok=True)
 
-    beian_out = os.path.join(out_dir, f"备案表_{name}.docx")
+    prefix = _resolve_filename_prefix(paths, form_data, report_data)
+
+    beian_out = os.path.join(out_dir, f"{prefix}-备案表.docx")
     generate_beian(paths["beian_template"], beian_out, data, highlighted_fields=highlighted)
 
-    report_out = os.path.join(out_dir, f"定级报告_{name}.docx")
+    report_out = os.path.join(out_dir, f"{prefix}-定级报告.docx")
     generate_report(paths["report_template"], report_out, report, name, highlighted_fields=highlighted)
 
     return {
@@ -565,6 +568,24 @@ def _resolve_document_name(paths, form_data, report_data):
         or paths.get("project_name", "").strip()
         or "未命名系统"
     )
+
+
+def _resolve_filename_prefix(paths, form_data, report_data):
+    """按 单位名称-系统名称 拼接文件名前缀，含非法字符替换。"""
+    unit_name = (
+        form_data.get("unit", {}).get("unit_name", "").strip()
+        or paths.get("unit_name", "").strip()
+        or "未命名单位"
+    )
+    system_name = _resolve_document_name(paths, form_data, report_data)
+    prefix = f"{unit_name}-{system_name}"
+    return _sanitize_filename(prefix)
+
+
+def _sanitize_filename(name):
+    """剔除文件名非法字符（Windows）。"""
+    bad = '<>:"/\\|?*\n\r\t'
+    return "".join("_" if ch in bad else ch for ch in (name or "")).strip(" .") or "未命名"
 
 
 def _new_project_data_dict():
@@ -786,7 +807,8 @@ def _dict_to_report(d):
     from models.project_data import ReportInfo, SubSystem
     r = ReportInfo()
     for key in ["system_name", "responsibility", "composition", "topology_image",
-                 "business_desc", "security_resp", "biz_info_desc", "biz_victim",
+                 "business_desc", "carried_data", "security_resp",
+                 "biz_info_desc", "biz_victim",
                  "biz_degree", "biz_level", "svc_desc", "svc_victim",
                  "svc_degree", "svc_level", "final_level"]:
         setattr(r, key, d.get(key, ""))

@@ -237,7 +237,8 @@ class ReportInfo:
     composition: str = ""              # 定级对象构成描述
     topology_image: str = ""           # 网络拓扑图文件路径
     business_desc: str = ""            # 承载业务描述
-    security_resp: str = ""            # 安全责任描述
+    carried_data: str = ""             # 承载数据描述（新模板 (四) ）
+    security_resp: str = ""            # 安全责任描述（新模板 (五) ）
     subsystems: list = field(default_factory=list)  # 子系统列表 [SubSystem]
     # 业务信息安全等级确定
     biz_info_desc: str = ""            # 业务信息描述
