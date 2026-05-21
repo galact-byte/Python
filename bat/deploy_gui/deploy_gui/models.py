@@ -41,6 +41,7 @@ class DeployOptions:
     restart_backend: bool = False
     reload_nginx: bool = False
     health_check: bool = False
+    backend_python_path: str = "backend/venv/bin/python"
     backend_requirements_path: str = "backend/requirements.txt"
     frontend_dir: str = "frontend"
     backend_service_name: str = "myapp-backend"

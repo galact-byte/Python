@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QPlainTextEdit,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QSplitter,
     QVBoxLayout,
@@ -161,15 +162,15 @@ QListWidget#projectList {
     background: #f7fbff;
     border: 1px solid #dbe7ff;
     border-radius: 20px;
-    padding: 12px;
+    padding: 8px;
     outline: none;
 }
 QListWidget#projectList::item {
     background: transparent;
     border: 1px solid transparent;
     border-radius: 16px;
-    padding: 2px;
-    margin: 6px 0;
+    padding: 0;
+    margin: 4px 0;
 }
 QListWidget#projectList::item:selected {
     background: #dbeafe;
@@ -276,7 +277,9 @@ QPlainTextEdit#logOutput {
 }
 QSplitter#previewSplitter::handle {
     background: #dbe7ff;
-    height: 8px;
+    border-radius: 999px;
+    height: 14px;
+    margin: 4px 18px;
 }
 QSplitter#previewSplitter::handle:hover {
     background: #bfdbfe;
@@ -480,6 +483,7 @@ class MainWindow(QMainWindow):
         self.project_list = QListWidget()
         self.project_list.setObjectName("projectList")
         self.project_list.setMinimumHeight(360)
+        self.project_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.project_list.currentRowChanged.connect(self._on_project_selected)
         layout.addWidget(self.project_list, 1)
         return card
@@ -600,27 +604,33 @@ class MainWindow(QMainWindow):
         self.log_output.setReadOnly(True)
         self.log_output.setPlaceholderText("开始部署后，这里会持续输出连接、执行和失败信息。")
 
-        preview_splitter = QSplitter(Qt.Orientation.Vertical)
-        preview_splitter.setObjectName("previewSplitter")
-        preview_splitter.setChildrenCollapsible(False)
+        self.preview_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.preview_splitter.setObjectName("previewSplitter")
+        self.preview_splitter.setChildrenCollapsible(False)
+        self.preview_splitter.setHandleWidth(14)
+        self.preview_splitter.setOpaqueResize(False)
+        self.plan_preview.setMinimumHeight(160)
+        self.log_output.setMinimumHeight(220)
 
         plan_panel = QWidget()
+        plan_panel.setMinimumHeight(180)
         plan_layout = QVBoxLayout(plan_panel)
         plan_layout.setContentsMargins(0, 0, 0, 0)
         plan_layout.setSpacing(8)
         plan_layout.addWidget(self.plan_preview)
 
         log_panel = QWidget()
+        log_panel.setMinimumHeight(240)
         log_layout = QVBoxLayout(log_panel)
         log_layout.setContentsMargins(0, 0, 0, 0)
         log_layout.setSpacing(8)
         log_layout.addWidget(log_title)
         log_layout.addWidget(self.log_output)
 
-        preview_splitter.addWidget(plan_panel)
-        preview_splitter.addWidget(log_panel)
-        preview_splitter.setSizes([280, 420])
-        layout.addWidget(preview_splitter, 1)
+        self.preview_splitter.addWidget(plan_panel)
+        self.preview_splitter.addWidget(log_panel)
+        self.preview_splitter.setSizes([280, 420])
+        layout.addWidget(self.preview_splitter, 1)
         return card
 
     def _create_card(self, title: str, hint: str) -> tuple[QFrame, QVBoxLayout]:
@@ -661,7 +671,7 @@ class MainWindow(QMainWindow):
         widget = QFrame()
         widget.setObjectName("projectListItem")
         widget.setMinimumHeight(96)
-        widget.setMaximumWidth(360)
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -746,14 +756,19 @@ class MainWindow(QMainWindow):
         for label, key in fields:
             edit = QLineEdit()
             self.mode_edits[key] = edit
-            self.mode_form.addRow(label, edit)
+            if key in {"local_source_dir", "repo_dir"}:
+                self.mode_form.addRow(label, self._build_mode_path_row(edit, lambda _, field=key: self._browse_mode_directory(field), "选择目录"))
+            elif key == "local_zip_path":
+                self.mode_form.addRow(label, self._build_mode_path_row(edit, lambda _, field=key: self._browse_mode_file(field), "选择文件"))
+            else:
+                self.mode_form.addRow(label, edit)
 
     def _load_projects(self) -> None:
         self.project_list.clear()
         for project in self.projects:
             widget = self._build_project_item_widget(project)
             item = QListWidgetItem()
-            item.setSizeHint(widget.minimumSizeHint())
+            item.setSizeHint(widget.sizeHint())
             self.project_list.addItem(item)
             self.project_list.setItemWidget(item, widget)
         if self.projects:
@@ -909,6 +924,25 @@ class MainWindow(QMainWindow):
         path = QFileDialog.getExistingDirectory(self, "选择本地项目目录", self.local_project_edit.text() or os.getcwd())
         if path:
             self.local_project_edit.setText(path)
+
+    def _build_mode_path_row(self, edit: QLineEdit, handler, button_text: str) -> QWidget:
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        row.addWidget(edit)
+        row.addWidget(self._create_button(button_text, None, handler))
+        return self._wrap_layout(row)
+
+    def _browse_mode_directory(self, key: str) -> None:
+        current = self.mode_edits[key].text().strip() or self.local_project_edit.text().strip() or os.getcwd()
+        path = QFileDialog.getExistingDirectory(self, "选择目录", current)
+        if path:
+            self.mode_edits[key].setText(path)
+
+    def _browse_mode_file(self, key: str) -> None:
+        current = self.mode_edits[key].text().strip() or os.path.join(self.local_project_edit.text().strip() or os.getcwd(), "Program.zip")
+        path, _ = QFileDialog.getSaveFileName(self, "选择文件", current, "Zip 文件 (*.zip);;所有文件 (*.*)")
+        if path:
+            self.mode_edits[key].setText(path)
 
     def _generate_plan(self) -> None:
         project = self._collect_form()

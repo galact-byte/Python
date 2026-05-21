@@ -2,7 +2,8 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication, QLabel, QSplitter
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QSplitter
 
 from deploy_gui.main_window import MainWindow, build_program_preset
 from deploy_gui.models import ProjectConfig
@@ -72,3 +73,27 @@ def test_window_exposes_include_local_database_checkbox():
     window = MainWindow()
 
     assert window.include_local_db_check.text() == "压缩包含本地数据库"
+
+
+def test_mode_config_exposes_path_browse_buttons_for_local_fields():
+    window = MainWindow()
+
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData("zip"))
+    zip_buttons = [button.text() for button in window.mode_group.findChildren(QPushButton)]
+
+    assert "选择目录" in zip_buttons
+    assert "选择文件" in zip_buttons
+
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData("git"))
+    git_buttons = [button.text() for button in window.mode_group.findChildren(QPushButton)]
+
+    assert "选择目录" in git_buttons
+
+
+def test_preview_panel_uses_draggable_splitter_with_visible_handle():
+    window = MainWindow()
+
+    assert window.preview_splitter.orientation() == Qt.Orientation.Vertical
+    assert window.preview_splitter.handleWidth() >= 12
+    assert window.plan_preview.minimumHeight() >= 140
+    assert window.log_output.minimumHeight() >= 180

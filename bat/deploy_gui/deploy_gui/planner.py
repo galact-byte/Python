@@ -5,23 +5,29 @@ from pathlib import PurePosixPath
 from .models import DeployStep, ProjectConfig
 
 
+def _resolve_remote_path(remote_root: PurePosixPath, raw_path: str) -> PurePosixPath:
+    path = PurePosixPath(raw_path)
+    return path if path.is_absolute() else remote_root / path
+
+
 def _append_option_steps(steps: list[DeployStep], project: ProjectConfig) -> None:
     options = project.options
     remote_root = PurePosixPath(project.remote_project_dir) if project.remote_project_dir else PurePosixPath(".")
 
     if options.backup_database:
-        source = remote_root / PurePosixPath(options.database_path)
+        source = _resolve_remote_path(remote_root, options.database_path)
         backup = PurePosixPath(options.database_backup_path)
         steps.append(DeployStep("备份数据库", "remote", f"cp {source.as_posix()} {backup.as_posix()}", risky=True))
     if options.restore_database:
         source = PurePosixPath(options.database_backup_path)
-        target = remote_root / PurePosixPath(options.database_path)
+        target = _resolve_remote_path(remote_root, options.database_path)
         steps.append(DeployStep("恢复数据库", "remote", f"cp {source.as_posix()} {target.as_posix()}", risky=True))
     if options.install_backend_deps:
-        req = remote_root / PurePosixPath(options.backend_requirements_path)
-        steps.append(DeployStep("安装后端依赖", "remote", f"python3 -m pip install -r {req.as_posix()}"))
+        req = _resolve_remote_path(remote_root, options.backend_requirements_path)
+        python_path = _resolve_remote_path(remote_root, options.backend_python_path)
+        steps.append(DeployStep("安装后端依赖", "remote", f"{python_path.as_posix()} -m pip install -r {req.as_posix()}"))
     if options.build_frontend:
-        frontend_dir = remote_root / PurePosixPath(options.frontend_dir)
+        frontend_dir = _resolve_remote_path(remote_root, options.frontend_dir)
         steps.append(DeployStep("前端构建", "remote", f"cd {frontend_dir.as_posix()} && npm run build"))
     if options.restart_backend:
         steps.append(DeployStep("重启后端服务", "remote", f"systemctl restart {project.options.backend_service_name}", risky=True))

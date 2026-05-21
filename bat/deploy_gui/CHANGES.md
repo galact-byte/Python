@@ -29,15 +29,20 @@
 - 为主窗口补充最小结构测试，验证关键面板可实例化
 - 修复左侧项目卡片在列表中的溢出显示，收紧边距并允许主机/目录信息换行
 - 右侧执行视图改为可上下拖拽的分隔布局，支持在执行计划和远端日志之间调整高度
+- 补齐模式配置中的本地路径选择入口，ZIP/Git 模式可直接选择目录或 ZIP 文件
+- 强化右侧拖拽手柄可见性，并为计划区/日志区增加最小高度，避免内容被挤没
 - ZIP 计划文案改为明确显示“源目录 -> 压缩包路径”，避免误解为只引用已有文件
 - ZIP 打包前增加本地源目录校验，路径错误时直接报明确信息
 - ZIP 模式下检测到 `backend/project_completion.db` 时会提醒用户，默认打包排除该数据库文件
 - 新增“压缩包含本地数据库”选项，仅在显式勾选时才把本地数据库打进 ZIP
+- 后端依赖安装默认改为使用项目内 `backend/venv/bin/python -m pip`，贴近服务器 Python 3.9 虚拟环境流程
 
 ### 验证
 
 - `python -m pytest tests/test_main_window.py -q` 通过（1 passed）
 - `python -m pytest tests -q` 通过（10 passed）
+- `python -m pytest tests/test_main_window.py tests/test_planner.py -q -p no:cacheprovider` 通过（10 passed）
+- `python -m pytest tests -q -p no:cacheprovider` 通过（15 passed）
 - `python -c "import os; os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen'); from deploy_gui.main_window import MainWindow; from PyQt6.QtWidgets import QApplication; app = QApplication.instance() or QApplication([]); w = MainWindow(); print(w.windowTitle())"` 输出 `通用部署器`
 - `python - <<EOF ... create_zip(..., ignore_relative_paths={'backend/project_completion.db'}) ... EOF` 验证 ZIP 内仅保留 `Program/backend/app.py`，未包含数据库文件
 - `python - <<EOF ... MainWindow(); print(findChild(QSplitter, 'previewSplitter')) ... EOF` 验证右侧纵向分隔器和“压缩包含本地数据库”复选框已创建
