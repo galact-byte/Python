@@ -14,6 +14,19 @@ from core.format_style import (
 )
 
 
+# 生成态：备案表强制五号(10.5pt)；定级报告保留模板字号
+_FILL_FORCE_SIZE = None
+
+
+def _set_fill_mode(mode):
+    """mode: 'beian' → 强制 10.5pt；'report' → 保留模板"""
+    global _FILL_FORCE_SIZE
+    if mode == 'beian':
+        _FILL_FORCE_SIZE = Pt(10.5)
+    else:
+        _FILL_FORCE_SIZE = None
+
+
 # ══════════════════════════════════════════════════════
 #  底层工具函数
 # ══════════════════════════════════════════════════════
@@ -63,20 +76,19 @@ def _set_run_font_slots(run, east_asia_font=None, western_font=None):
 
 
 def _set_run_text(run, text):
+    """\u586b\u5199\u503c\u7684\u5b57\u4f53\u7edf\u4e00\uff1a\u4e2d\u6587 \u4eff\u5b8b_GB2312\u3001\u897f\u6587 Times New Roman\uff0c\u5907\u6848\u8868 mode \u5f3a\u5236 10.5pt\u3002"""
     run.text = text
-    if run.font.size is None:
-        run.font.size = Pt(10.5)
     raw_text = str(text or "")
-    has_chinese = bool(re.search(r"[\u4e00-\u9fff]", raw_text))
-    has_western = bool(re.search(r"[A-Za-z0-9@.\-_/]", raw_text))
-    if has_chinese:
+    if raw_text:
         _set_run_font_slots(
             run,
             east_asia_font=FONT_FANG_GB,
-            western_font="Times New Roman" if has_western else (run.font.name or "Times New Roman"),
+            western_font="Times New Roman",
         )
-    elif has_western:
-        _set_run_font_slots(run, western_font="Times New Roman")
+    if _FILL_FORCE_SIZE is not None:
+        run.font.size = _FILL_FORCE_SIZE
+    elif run.font.size is None:
+        run.font.size = Pt(10.5)
 
 
 def _fill_text_into_underscores(text, value, min_tail=0):
@@ -159,11 +171,12 @@ def _find_and_check(cell, match_text, multi=False):
     """
     在单元格中查找 match_text 对应选项并打勾。
     match_text 可以是选项编号（如"4"）或选项文字（如"企业"）。
-    multi=True 时可同时勾选多个匹配项。
+    multi=True 时可同时勾选多个匹配项，返回是否至少命中一次。
 
     结构: [sym_run][编号_run][文字_run][空格_run] [sym_run][编号_run]...
     sym_run 在编号/文字 run 的前面。
     """
+    matched = False
     for para in cell.paragraphs:
         runs = para.runs
         for i, run in enumerate(runs):
@@ -187,9 +200,25 @@ def _find_and_check(cell, match_text, multi=False):
                 match_text in option_str or
                 any(match_text == p for p in option_parts)):
                 _check_sym(run, True)
+                matched = True
                 if not multi:
                     return True
-    return False
+    return matched
+
+
+def _fill_scenario_options(cell, text):
+    """场景行（多选 + 其他___）：尝试匹配每个 token 勾选；未命中的 token 写入 其他___。"""
+    if not text:
+        return
+    raw = str(text).replace('，', ',').replace('、', ',').replace(';', ',').replace('；', ',')
+    tokens = [t.strip() for t in raw.split(',') if t.strip()]
+    leftover = []
+    for token in tokens:
+        if not _find_and_check(cell, token, multi=True):
+            leftover.append(token)
+    if leftover:
+        _find_and_check(cell, '其他', multi=True)
+        _fill_other_option(cell, '其他', '、'.join(leftover))
 
 
 def _find_and_check_multiple(cell, match_texts):
@@ -217,6 +246,9 @@ def _fill_after_keyword(cell, keyword, text):
         for i, run in enumerate(runs):
             if keyword in run.text:
                 found_keyword = True
+                if "_" in run.text and re.search(r"_+", run.text):
+                    if _fill_placeholder_run(run, text):
+                        return True
                 continue
             if found_keyword and (run.text.strip() == '' or
                                    all(c in ' _\u3000' for c in run.text)):
@@ -238,10 +270,18 @@ def _copy_run_style(src_run, dst_run):
         if dst_rpr is not None:
             dst_run._element.remove(dst_rpr)
         dst_run._element.insert(0, deepcopy(src_rpr))
-    dst_run.font.name = src_run.font.name
-    dst_run.font.size = src_run.font.size
-    dst_run.font.bold = src_run.font.bold
-    dst_run.font.italic = src_run.font.italic
+    # 注意：不要再用 dst_run.font.name = src_run.font.name 等高层 API 二次覆盖。
+    # 当 src.font.name=None（如模板只有 eastAsia 没 ascii）时，setter 会删除整个 rFonts，
+    # 一并清掉 eastAsia 仿宋_GB2312，导致中文回退到默认宋体。
+    # rPr 的 deepcopy 已经包含 font/size/bold/italic 完整信息。
+    if src_run.font.name and dst_run.font.name != src_run.font.name:
+        dst_run.font.name = src_run.font.name
+    if src_run.font.size is not None and dst_run.font.size != src_run.font.size:
+        dst_run.font.size = src_run.font.size
+    if src_run.font.bold is not None and dst_run.font.bold != src_run.font.bold:
+        dst_run.font.bold = src_run.font.bold
+    if src_run.font.italic is not None and dst_run.font.italic != src_run.font.italic:
+        dst_run.font.italic = src_run.font.italic
 
 
 def _insert_run_after(run):
@@ -254,10 +294,13 @@ def _insert_run_after(run):
     return new_run
 
 
-def _fill_placeholder_run(run, value, pattern=r"_+"):
+def _fill_placeholder_run(run, value, pattern=r"_+", keep_length=False):
     """
     仅替换当前 run 中命中的下划线占位段，并让填充值本身保留下划线效果。
     不再把 `_` 字符残留在填充值后面。
+
+    keep_length=True：保留原占位"视觉长度"——value 短于原下划线时，在 value 之后追加
+    剩余 `_` 字符，保持视觉填空线效果（适用于表六数据来源/流出/存储位置等需要视觉占位的字段）。
     """
     if run is None:
         return False
@@ -272,13 +315,22 @@ def _fill_placeholder_run(run, value, pattern=r"_+"):
     prefix = original_text[:match.start()]
     suffix = original_text[match.end():]
 
+    # 计算剩余下划线（保持原视觉长度）
+    extra_underscores = ""
+    if keep_length:
+        underline_count = match.end() - match.start()
+        value_visual = sum(2 if '一' <= c <= '鿿' else 1 for c in value)
+        remaining = underline_count - value_visual
+        if remaining > 0:
+            extra_underscores = "_" * remaining
+
     if prefix:
         fill_run = _insert_run_after(run)
         if fill_run is None:
             return False
         _copy_run_style(run, fill_run)
         suffix_run = None
-        if suffix:
+        if suffix or extra_underscores:
             suffix_run = _insert_run_after(fill_run)
             if suffix_run is None:
                 return False
@@ -287,7 +339,7 @@ def _fill_placeholder_run(run, value, pattern=r"_+"):
     else:
         fill_run = run
         suffix_run = None
-        if suffix:
+        if suffix or extra_underscores:
             suffix_run = _insert_run_after(run)
             if suffix_run is None:
                 return False
@@ -297,27 +349,71 @@ def _fill_placeholder_run(run, value, pattern=r"_+"):
     fill_run.font.underline = True
 
     if suffix_run is not None:
-        _set_run_text(suffix_run, suffix)
+        _set_run_text(suffix_run, extra_underscores + suffix)
 
     return True
 
 
+def _clear_other_residue(cell, option_labels=('其他', '其它')):
+    """清空"其他/其它"选项后面的残留值（模板预填如"电力专网"等示例）。
+    user 未选 9/99 时调用，避免残留示例显示。
+    """
+    for para in cell.paragraphs:
+        runs = para.runs
+        for i, run in enumerate(runs):
+            if not any(lbl in run.text for lbl in option_labels):
+                continue
+            # 在 label run 自身有 _+ 占位时，不清（_fill_other_option 走这条路）
+            if '_' in run.text:
+                continue
+            for j in range(i + 1, len(runs)):
+                tgt = runs[j]
+                if tgt._element.find(qn('w:sym')) is not None:
+                    break
+                if tgt.text.strip() != '':
+                    _set_run_text(tgt, '')
+            return True
+    return False
+
+
 def _fill_other_option(cell, option_label, text):
-    """在“其他_____”这类选项后填充补充文本。"""
+    """在"其他_____"这类选项后填充补充文本。
+
+    兼容两种 run 结构：
+    - 「其他」和下划线在同一 run（如 '其他______'）→ 直接在该 run 内替换下划线
+    - 「其他」后跟独立的空白/下划线 run → 在后续 run 内填值
+    填入后继续清空到下一个 sym 之间的残留 run（避免模板预填的"本单位"等示例值被并列保留）。
+    """
     if not text:
         return False
     for para in cell.paragraphs:
         runs = para.runs
         for i, run in enumerate(runs):
-            if option_label in run.text:
-                for j in range(i + 1, len(runs)):
-                    target = runs[j]
-                    if '_' in target.text or target.text.strip() == '':
-                        if '_' in target.text:
-                            _fill_placeholder_run(target, text)
-                        else:
-                            _set_run_text(target, text)
-                        return True
+            if option_label not in run.text:
+                continue
+            wrote = False
+            # keyword run 自带下划线占位
+            if '_' in run.text:
+                if _fill_placeholder_run(run, text):
+                    wrote = True
+            for j in range(i + 1, len(runs)):
+                target = runs[j]
+                # 碰到下一个选项的 sym 就停
+                if target._element.find(qn('w:sym')) is not None:
+                    break
+                if not wrote:
+                    if '_' in target.text:
+                        if _fill_placeholder_run(target, text):
+                            wrote = True
+                            continue
+                    if target.text.strip() == '':
+                        _set_run_text(target, text)
+                        wrote = True
+                        continue
+                # 已经写过 / 找不到合适位置，但仍要清空残留 non-empty run（防止模板示例值保留）
+                if wrote and target.text.strip() != '':
+                    _set_run_text(target, '')
+            return wrote
     return False
 
 
@@ -335,34 +431,111 @@ def _fill_underline_in_paragraph(paragraph, index, value):
 
 
 def _fill_numbered_lines(cell, values):
-    """按段落顺序填充“1xxx____ / 2xxx____”这类多行下划线。"""
-    values = [str(v).strip() for v in values if str(v).strip()]
-    if not values:
-        return False
-    value_idx = 0
-    for para in cell.paragraphs:
-        for run in para.runs:
-            if '_' in run.text and value_idx < len(values):
-                if _fill_placeholder_run(run, values[value_idx]):
-                    value_idx += 1
+    """按段落顺序填充多行（每段一个 value）。
+    兼容 3 种模板结构：
+      a) 单 run 内 label+下划线（'数据来源单位2___'）→ 替换 _+ 为 value
+      b) label run + 后续空白/下划线/残留 run → 首个非 label run 写 value，其余清空
+      c) 用户未填该段 → 整段非 label 区也清空
+    """
+    values = [str(v).strip() if v else '' for v in (values or [])]
+    paragraphs = cell.paragraphs
+    for idx, para in enumerate(paragraphs):
+        value = values[idx] if idx < len(values) else ''
+        runs = para.runs
+        if not runs:
+            continue
+        # 跳过段首空 run / sym 编号 run
+        i = 0
+        while i < len(runs):
+            r = runs[i]
+            if r.text.strip() == '' or r._element.find(qn('w:sym')) is not None:
+                i += 1
+                continue
+            break
+        if i >= len(runs):
+            continue
+        # 情况 a) label run 自身含 _+ 占位
+        if '_' in runs[i].text:
+            if value:
+                _fill_placeholder_run(runs[i], value, keep_length=True)
+            else:
+                # 用户未填 → 保留下划线占位（不破坏视觉填空线）
+                pass
+            # 清空后续非 sym non-empty 残留
+            for j in range(i + 1, len(runs)):
+                tgt = runs[j]
+                if tgt._element.find(qn('w:sym')) is not None:
                     break
-        if value_idx >= len(values):
-            return True
-    return value_idx > 0
+                if tgt.text.strip() != '':
+                    _set_run_text(tgt, '')
+            continue
+        # 情况 b)：label 在 i，后续 run 写 value
+        wrote = False
+        for j in range(i + 1, len(runs)):
+            tgt = runs[j]
+            if tgt._element.find(qn('w:sym')) is not None:
+                break
+            if not wrote:
+                if '_' in tgt.text and value:
+                    _fill_placeholder_run(tgt, value)
+                else:
+                    _set_run_text(tgt, value)
+                wrote = True
+            else:
+                _set_run_text(tgt, '')
+        # 没找到后续位置但有值 → 在 label run 末尾追加（极少见）
+        if not wrote and value:
+            runs[i].text = runs[i].text + value
+    return True
 
 
 def _fill_option_line(cell, code, value):
+    """填充选项行（如 '1 本单位机房 ____'）。兼容下划线占位 / 空格占位 / 河津残留。"""
     code = str(code or "").strip()
     value = str(value or "").strip()
-    if not code or not value:
+    if not code:
         return False
     for para in cell.paragraphs:
         para_text = "".join(run.text for run in para.runs).strip()
         if not para_text.startswith(code):
             continue
-        for run in para.runs:
-            if "_" in run.text:
-                return _fill_placeholder_run(run, value)
+        runs = para.runs
+        # 找 label run = 第一个含中文（即非纯空白且非纯数字）run
+        label_idx = None
+        for i, r in enumerate(runs):
+            txt = r.text.strip()
+            if not txt or txt == code:
+                continue
+            label_idx = i
+            break
+        if label_idx is None:
+            continue
+        # 情况 a) label run 自身含 _+
+        if '_' in runs[label_idx].text and value:
+            _fill_placeholder_run(runs[label_idx], value, keep_length=True)
+            # 清空后续非 sym 残留
+            for j in range(label_idx + 1, len(runs)):
+                tgt = runs[j]
+                if tgt._element.find(qn('w:sym')) is not None:
+                    break
+                if tgt.text.strip() != '':
+                    _set_run_text(tgt, '')
+            return True
+        # 情况 b) label 后跟独立 value run
+        wrote = False
+        for j in range(label_idx + 1, len(runs)):
+            tgt = runs[j]
+            if tgt._element.find(qn('w:sym')) is not None:
+                break
+            if not wrote:
+                if '_' in tgt.text and value:
+                    _fill_placeholder_run(tgt, value)
+                else:
+                    _set_run_text(tgt, value)
+                wrote = True
+            else:
+                _set_run_text(tgt, '')
+        return wrote or not value
     return False
 
 
@@ -371,26 +544,26 @@ def _safe_set_value(table, row, col, text):
     安全设置「纯值单元格」的文本。
     适用于整个单元格就是值的情况（如单位名称、信用代码等）。
     保留第一个 run 的格式，清除其他 run。
+    空值时也会清空 cell 原文本（覆盖模板预填的河津/邵家岭等示例残留）。
     """
-    if not text or not str(text).strip():
-        return
+    value = "" if text is None else str(text).strip()
     try:
         cell = table.rows[row].cells[col]
         for p in cell.paragraphs:
             if p.runs:
                 style_run = p.runs[0]
-                _set_run_text(p.runs[0], str(text))
+                _set_run_text(p.runs[0], value)
                 _copy_run_style(style_run, p.runs[0])
-                _set_run_text(p.runs[0], str(text))
+                _set_run_text(p.runs[0], value)
                 for run in p.runs[1:]:
                     run.text = ''
                 return
         # 没有 run 则新建
-        if cell.paragraphs:
-            run = cell.paragraphs[0].add_run(str(text))
+        if cell.paragraphs and value:
+            run = cell.paragraphs[0].add_run(value)
             if cell.paragraphs[0].runs:
                 _copy_run_style(cell.paragraphs[0].runs[0], run)
-            _set_run_text(run, str(text))
+            _set_run_text(run, value)
     except (IndexError, AttributeError):
         pass
 
@@ -409,46 +582,75 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
     if len(doc.tables) < 7:
         raise ValueError(f"模版表格数不足: 期望>=7, 实际{len(doc.tables)}")
 
+    _set_fill_mode('beian')
+    try:
+        _fill_beian_internal(doc, data, highlighted_fields)
+        doc.save(output_path)
+    finally:
+        _set_fill_mode('report')
+    return output_path
+
+
+def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
+    """实际填充逻辑（拆出来以便 generate_beian 控制 fill mode）。"""
     u = data.unit
     tgt = data.target
     g = data.grading
-    target_name = tgt.name or data.project_name  # 定级对象名（用于表标题）
-    unit_name = u.unit_name                       # 单位名称（用于封面）
+    target_name = tgt.name or data.project_name
+    unit_name = u.unit_name
+
+    _autofill_attachment_names(data, unit_name, target_name)
 
     # ── 封面：备案单位填写 ──
-    # 段12: run[7] 是"备案单位："后的空格占位
+    # 模板 L12 runs: ['备',' ','案',' ','单',' ','位：','',' ']
+    # 受理那行排除（含"受理"或"盖章"），定位到真正的"备案单位："行
     if unit_name:
         for p in doc.paragraphs:
             full = p.text
-            if '备' in full and '案' in full and '单' in full and '位' in full and '盖章' in full and '受理' not in full:
-                # 找到"备案单位"标签 run，复制其格式
+            if ('备' in full and '案' in full and '单' in full and '位' in full
+                    and '受理' not in full and '盖章' not in full):
+                # 找到"位："这一 run 之后的所有 run，把 unit_name 写到下一个 run
                 label_run = None
-                for run in p.runs:
-                    if '备' in run.text or '案' in run.text or '单' in run.text or '位' in run.text:
+                colon_idx = -1
+                for i, run in enumerate(p.runs):
+                    if '位' in run.text or '：' in run.text or ':' in run.text:
                         label_run = run
-                        break
-                for run in p.runs:
-                    if run.text.strip() == '' and len(run.text) >= 3:
-                        run.text = unit_name
-                        # 复制标签 run 的字体格式
-                        if label_run:
-                            run.font.name = label_run.font.name
-                            run.font.size = label_run.font.size
-                            run.font.bold = label_run.font.bold
-                            if label_run.font.name:
-                                _set_east_asia_font(run, label_run.font.name)
-                        break
+                        if '：' in run.text or ':' in run.text:
+                            colon_idx = i
+                if colon_idx >= 0 and colon_idx + 1 < len(p.runs):
+                    target = p.runs[colon_idx + 1]
+                    target.text = unit_name
+                    # 清空"位："之后所有其它 run（避免末尾残留多余空格）
+                    for run in p.runs[colon_idx + 2:]:
+                        run.text = ""
+                    if label_run:
+                        target.font.name = label_run.font.name
+                        target.font.size = label_run.font.size
+                        target.font.bold = label_run.font.bold
+                        if label_run.font.name:
+                            _set_east_asia_font(target, label_run.font.name)
                 break
 
     # ── 表标题替换 （ / ） → （定级对象名） ──
+    # 同时处理表五标题："表五（  ）定级对象提交材料情况"（括号内是全角空格）
     if target_name:
         for p in doc.paragraphs:
-            if '（ / ）' in p.text:
+            txt = p.text
+            if '（ / ）' in txt:
                 for run in p.runs:
                     if '（ / ）' in run.text:
                         run.text = run.text.replace('（ / ）', f'（{target_name}）')
                     elif '/' in run.text and run.text.strip() in ['/', '/ ']:
                         run.text = run.text.replace('/', target_name)
+            elif '表五' in txt and '定级对象提交材料' in txt:
+                # 把整段第一个 run 替换，其余清空
+                new_text = re.sub(r'表五（\s*）', f'表五（{target_name}）', txt)
+                if new_text == txt:
+                    new_text = txt.replace('表五（', f'表五（{target_name}', 1)
+                if p.runs:
+                    p.runs[0].text = new_text
+                    for run in p.runs[1:]:
+                        run.text = ''
 
     # ══════ 表2: 单位信息 (index 1, 8列) ══════
     t2 = doc.tables[1]
@@ -502,18 +704,24 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
         code = u.industry.split('-')[0] if '-' in u.industry else u.industry
         _find_and_check(t2.rows[16].cells[1], code)
 
-    # 定级对象数量
-    _safe_set_value(t2, 17, 1, u.current_total)
-    _safe_set_value(t2, 17, 3, u.current_level2)
-    _safe_set_value(t2, 17, 7, u.current_level3)
-    _safe_set_value(t2, 18, 3, u.current_level4)
-    _safe_set_value(t2, 18, 7, u.current_level5)
-    _safe_set_value(t2, 19, 1, u.all_total)
-    _safe_set_value(t2, 19, 3, u.all_level1)
-    _safe_set_value(t2, 19, 7, u.all_level2)
-    _safe_set_value(t2, 20, 3, u.all_level3)
-    _safe_set_value(t2, 20, 7, u.all_level4)
-    _safe_set_value(t2, 21, 3, u.all_level5)
+    # 定级对象数量（自动补"个"后缀，未填值则置 "0个"，保持原模板视觉一致）
+    def _cnt(v):
+        v = str(v or "").strip()
+        if not v:
+            return "0个"
+        return v if v.endswith("个") else f"{v}个"
+
+    _safe_set_value(t2, 17, 1, _cnt(u.current_total))
+    _safe_set_value(t2, 17, 3, _cnt(u.current_level2))
+    _safe_set_value(t2, 17, 7, _cnt(u.current_level3))
+    _safe_set_value(t2, 18, 3, _cnt(u.current_level4))
+    _safe_set_value(t2, 18, 7, _cnt(u.current_level5))
+    _safe_set_value(t2, 19, 1, _cnt(u.all_total))
+    _safe_set_value(t2, 19, 3, _cnt(u.all_level1))
+    _safe_set_value(t2, 19, 7, _cnt(u.all_level2))
+    _safe_set_value(t2, 20, 3, _cnt(u.all_level3))
+    _safe_set_value(t2, 20, 7, _cnt(u.all_level4))
+    _safe_set_value(t2, 21, 3, _cnt(u.all_level5))
 
     # ══════ 表3: 定级对象 (index 2, 9列) ══════
     t3 = doc.tables[2]
@@ -549,6 +757,8 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
         _find_and_check(t3.rows[2].cells[2], code)
         if code == '9' and tgt.biz_type_other:
             _fill_other_option(t3.rows[2].cells[2], '其他', tgt.biz_type_other)
+        else:
+            _clear_other_residue(t3.rows[2].cells[2])
 
     # 业务描述（纯值）
     _safe_set_value(t3, 3, 2, tgt.biz_desc)
@@ -559,6 +769,8 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
         _find_and_check(t3.rows[4].cells[2], code)
         if code == '99' and tgt.service_scope_other:
             _fill_other_option(t3.rows[4].cells[2], '其它', tgt.service_scope_other)
+        else:
+            _clear_other_residue(t3.rows[4].cells[2])
 
     # 服务对象（勾选）
     if tgt.service_target:
@@ -566,6 +778,8 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
         _find_and_check(t3.rows[5].cells[2], code)
         if code == '9' and tgt.service_target_other:
             _fill_other_option(t3.rows[5].cells[2], '其他', tgt.service_target_other)
+        else:
+            _clear_other_residue(t3.rows[5].cells[2])
 
     # 部署范围（勾选）
     if tgt.deploy_scope:
@@ -573,6 +787,8 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
         _find_and_check(t3.rows[6].cells[2], code)
         if code == '9' and tgt.deploy_scope_other:
             _fill_other_option(t3.rows[6].cells[2], '其他', tgt.deploy_scope_other)
+        else:
+            _clear_other_residue(t3.rows[6].cells[2])
 
     # 网络性质（勾选）
     if tgt.network_type:
@@ -700,10 +916,40 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
             if sc.mobile.terminal:
                 _find_and_check(t5.rows[15].cells[2], sc.mobile.terminal, multi=True)
         _find_and_check(t5.rows[16].cells[2], '是' if sc.iot.enabled else '否')
+        if sc.iot.enabled:
+            _fill_scenario_options(t5.rows[17].cells[2], sc.iot.perception)
+            _fill_scenario_options(t5.rows[18].cells[2], sc.iot.transport)
         _find_and_check(t5.rows[19].cells[2], '是' if sc.ics.enabled else '否')
+        if sc.ics.enabled:
+            _fill_scenario_options(t5.rows[20].cells[2], sc.ics.function_layer)
+            _fill_scenario_options(t5.rows[21].cells[2], sc.ics.composition)
         _find_and_check(t5.rows[22].cells[2], '是' if sc.bigdata.enabled else '否')
-        if sc.bigdata.enabled and sc.bigdata.cross_border:
-            _find_and_check(t5.rows[24].cells[2], sc.bigdata.cross_border, multi=True)
+        if sc.bigdata.enabled:
+            _fill_scenario_options(t5.rows[23].cells[2], sc.bigdata.composition)
+            if sc.bigdata.cross_border:
+                _find_and_check(t5.rows[24].cells[2], sc.bigdata.cross_border, multi=True)
+            comp_tokens = [t.strip() for t in (sc.bigdata.composition or '').replace('，', ',').replace('、', ',').split(',') if t.strip()]
+            has_platform = any('大数据平台' in tok for tok in comp_tokens)
+            has_client = any(('大数据应用' in tok) or ('大数据资源' in tok) for tok in comp_tokens)
+            # r26-r28: 大数据平台填写
+            if has_platform:
+                if sc.bigdata.platform_scale:
+                    _fill_underline_field(t5.rows[26].cells[2], sc.bigdata.platform_scale)
+                if sc.bigdata.platform_infra:
+                    _safe_set_value(t5, 27, 2, sc.bigdata.platform_infra)
+                if sc.bigdata.platform_ops:
+                    _safe_set_value(t5, 28, 2, sc.bigdata.platform_ops)
+            # r30-r31: 大数据应用、大数据资源填写
+            if has_client:
+                _fill_cloud_provider_line(
+                    t5.rows[30].cells[2],
+                    sc.bigdata.platform_provider,
+                    sc.bigdata.platform_level or '第三级',
+                    sc.bigdata.platform_name,
+                    _normalize_platform_code(sc.bigdata.platform_code),
+                )
+                if sc.bigdata.platform_cert:
+                    _fill_after_keyword(t5.rows[31].cells[2], '附件', sc.bigdata.platform_cert)
 
     # ══════ 表6: 附件清单 (index 5) — 勾选有/无 ══════
     if len(doc.tables) > 5:
@@ -768,7 +1014,11 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
         if d.storage_type:
             code = d.storage_type.split('-')[0]
             _find_and_check(t7.rows[10].cells[1], code)
-            _fill_option_line(t7.rows[10].cells[1], code, d.storage_cloud_name or d.storage_cloud)
+            # 取真正的位置名：过滤掉前端误传的 select 显示文本（"5-非云计算平台"等）
+            raw_name = (d.storage_cloud_name or d.storage_cloud or '').strip()
+            if raw_name and (raw_name == d.storage_type or raw_name.startswith(code + '-') or raw_name.startswith(code + ' ')):
+                raw_name = ''
+            _fill_option_line(t7.rows[10].cells[1], code, raw_name)
         if d.storage_room:
             code = d.storage_room.split('-')[0]
             _find_and_check(t7.rows[11].cells[1], code)
@@ -806,39 +1056,98 @@ def generate_beian(template_path: str, output_path: str, data: ProjectData, high
                 except (IndexError, AttributeError):
                     pass
 
-    doc.save(output_path)
-    return output_path
+
+def _autofill_attachment_names(data: ProjectData, unit_name: str, target_name: str):
+    """按 单位-系统-XXX 规则自动派生附件/报告/评审名（用户已填则保留）。"""
+    unit = (unit_name or "").strip()
+    system = (target_name or "").strip()
+    if not unit or not system:
+        return
+    prefix = f"{unit}-{system}"
+
+    def _wrap(suffix):
+        return f"《{prefix}-{suffix}》"
+
+    g = data.grading
+    if g.has_report and not (g.report_name or "").strip():
+        g.report_name = _wrap("定级报告")
+    if g.has_review and not (g.review_name or "").strip():
+        g.review_name = _wrap("专家评审意见表")
+
+    att = data.attachment
+    mapping = [
+        (att.topology, "网络拓扑结构及说明"),
+        (att.org_policy, "系统安全组织机构及管理制度"),
+        (att.design_plan, "安全建设整改方案"),
+        (att.product_list, "安全产品清单"),
+        (att.service_list, "安全服务清单"),
+        (att.supervisor_doc, "主管部门定级文件"),
+    ]
+    for item, suffix in mapping:
+        if item.has_file and not (item.file_name or "").strip():
+            item.file_name = _wrap(suffix)
 
 
 def _fill_address(cell, province, city, county, detail):
-    """精准填充地址单元格的空格占位 run"""
-    # 模版结构:
-    # p[0]: run[0]=spaces, run[1]="省", ... run[5]=spaces, run[6]="地", ...
-    # p[1]: run[0]=spaces, run[1]="县", ... run[5]="详细地址", run[6]=spaces
+    """填充地址单元格。兼容空格占位与模板预填残留两种情况。
+
+    模板 run 结构（新模板已预填河津示例）:
+      p[0]: ['山西', '省(自治区、直辖市) ', '运城', '地(区、市、州、盟)']
+      p[1]: ['河津', '县(区、市、旗)  详细地址', ' ', '樊村镇固镇村邵家岭光伏电站']
+    label run 含 '省(' / '地(' / '县(' / '详细地址'，其余视为可覆盖值 run。
+    """
+    def _is_label(text):
+        return any(k in text for k in ('省(', '地(', '县(', '详细地址'))
+
+    def _write_before(runs, label_key, value):
+        for i, r in enumerate(runs):
+            if label_key in r.text:
+                # 向前在「上一个 label 之后」区间内找：首个非 label run 写入，其余清空
+                target_idx = None
+                for j in range(i - 1, -1, -1):
+                    if _is_label(runs[j].text):
+                        break  # 不跨越上一个 label
+                    if target_idx is None:
+                        target_idx = j
+                    else:
+                        _set_run_text(runs[j], '')
+                if target_idx is not None:
+                    _set_run_text(runs[target_idx], value or '')
+                    return True
+                return False
+        return False
+
+    def _write_after(runs, label_key, value):
+        for i, r in enumerate(runs):
+            if label_key in r.text:
+                # 向后在「下一个 label 之前」区间内找：首个非 label run 写入，其余清空
+                target_idx = None
+                for j in range(i + 1, len(runs)):
+                    if _is_label(runs[j].text):
+                        break
+                    if target_idx is None:
+                        target_idx = j
+                    else:
+                        _set_run_text(runs[j], '')
+                if target_idx is not None:
+                    _set_run_text(runs[target_idx], value or '')
+                    return True
+                return False
+        return False
+
     try:
         paras = cell.paragraphs
-        if len(paras) >= 2:
-            p0_runs = paras[0].runs
-            p1_runs = paras[1].runs
-            # 省名 → p[0] 第一个空格run（"省"前面）
-            if province:
-                _fill_space_run_before(p0_runs, '省', province)
-            # 市名 → p[0] "地"前面的空格run
-            if city:
-                _fill_space_run_before(p0_runs, '地', city)
-            # 县名 → p[1] "县"前面的空格run
-            if county:
-                _fill_space_run_before(p1_runs, '县', county)
-            # 详细地址 → p[1] "详细地址"后面的空格run
-            if detail:
-                for i, run in enumerate(p1_runs):
-                    if '详细地址' in run.text:
-                        # 下一个run是空格占位
-                        for j in range(i + 1, len(p1_runs)):
-                            if p1_runs[j].text.strip() == '':
-                                _set_run_text(p1_runs[j], detail)
-                                return
-                        break
+        if len(paras) < 2:
+            return
+        p0_runs = paras[0].runs
+        p1_runs = paras[1].runs
+
+        # 省 / 市
+        _write_before(p0_runs, '省(', province)
+        _write_before(p0_runs, '地(', city)
+        # 县 / 详细地址
+        _write_before(p1_runs, '县(', county)
+        _write_after(p1_runs, '详细地址', detail)
     except (IndexError, AttributeError):
         pass
 
@@ -904,16 +1213,41 @@ def _fill_month_growth_cell(cell, amount, unit):
 
 
 def _fill_cloud_provider_line(cell, provider_name, level, platform_name, platform_code):
-    values = [provider_name, level, platform_name, platform_code]
-    value_idx = 0
-    for para in cell.paragraphs:
-        for run in para.runs:
-            if "_" in run.text and value_idx < len(values):
-                if _fill_placeholder_run(run, values[value_idx]):
-                    value_idx += 1
-        if value_idx >= len(values):
-            return True
-    return value_idx > 0
+    """按下划线占位顺序填入 4 个值（服务商/等级/名称/编号）。
+
+    兼容两种 run 结构：
+    - 多 run：每个 _+ 占位独占一个 run（如新模板云 r9 部分场景）
+    - 单 run：一个 run 内含多个 _+ 占位（如新模板大数据 r30）
+    """
+    values = [str(v or "") for v in [provider_name, level, platform_name, platform_code]]
+    idx = 0
+    placeholders = []  # 记录空值临时占位，最后还原
+    while idx < len(values):
+        target_run = None
+        for para in cell.paragraphs:
+            for run in para.runs:
+                if re.search(r"_+", run.text or ""):
+                    target_run = run
+                    break
+            if target_run is not None:
+                break
+        if target_run is None:
+            break
+        v = values[idx]
+        if v:
+            _fill_placeholder_run(target_run, v)
+        else:
+            text = target_run.text
+            m = re.search(r"_+", text)
+            sentinel = "＿" * (m.end() - m.start())  # 全角下划线占位，避免再被 r"_+" 命中
+            target_run.text = text[:m.start()] + sentinel + text[m.end():]
+            placeholders.append(target_run)
+        idx += 1
+    # 还原 sentinel（全角→半角下划线，保留视觉占位）
+    for run in placeholders:
+        if run.text:
+            run.text = run.text.replace("＿", "_")
+    return idx > 0
 
 
 def _normalize_platform_code(platform_code):
@@ -946,12 +1280,20 @@ def generate_report(template_path: str, output_path: str,
     """基于新定级报告模版生成填充后的定级报告"""
     if highlighted_fields is None:
         highlighted_fields = []
+    _set_fill_mode('report')
     shutil.copy2(template_path, output_path)
     doc = Document(output_path)
 
     # ── 第一遍：替换文本、删除说明 ──
     paragraphs_to_remove = []
-    section_body_map = {
+
+    # 章节标题 → 该章节正文应替换的字段值
+    section_title_to_value = {
+        "（一）责任主体": report.responsibility,
+        "（二）定级对象构成": report.composition,
+        "（三）承载业务": report.business_desc,
+        "（四）承载数据": report.carried_data,
+        "（五）安全责任": report.security_resp,
         "1、业务信息描述": report.biz_info_desc,
         "2、业务信息受到破坏时所侵害客体的确定": report.biz_victim,
         "3、业务信息受到破坏时对侵害客体的侵害程度的确定": report.biz_degree,
@@ -959,23 +1301,63 @@ def generate_report(template_path: str, output_path: str,
         "2、系统服务受到破坏时所侵害客体的确定": report.svc_victim,
         "3、系统服务受到破坏时对侵害客体的侵害程度的确定": report.svc_degree,
     }
-    pending_section = ""
-    for i, p in enumerate(doc.paragraphs):
+
+    # 按段落顺序划分章节正文（标题段之后、下一个标题之前的所有非空段为该节正文）
+    paragraphs_all = list(doc.paragraphs)
+    sections_to_apply = []  # [(value, [body_para, ...])]
+    current_value = None
+    current_body_paras = []
+
+    def _is_other_title(t: str) -> bool:
+        return bool(
+            re.match(r"^[一二三四五六七八九十]+、", t) or
+            re.match(r"^（[一二三四五六七八九十]）", t) or
+            re.match(r"^\d+、", t)
+        )
+
+    for p in paragraphs_all:
         text = p.text.strip()
         if not text:
             continue
-
-        if text in section_body_map:
-            pending_section = text
+        matched_key = None
+        for key in section_title_to_value:
+            if text == key or text.startswith(key):
+                matched_key = key
+                break
+        if matched_key is not None:
+            if current_value is not None:
+                sections_to_apply.append((current_value, current_body_paras))
+            current_value = section_title_to_value[matched_key]
+            current_body_paras = []
             continue
+        # 遇到其它标题，结束当前节
+        if _is_other_title(text):
+            if current_value is not None:
+                sections_to_apply.append((current_value, current_body_paras))
+                current_value = None
+                current_body_paras = []
+            continue
+        if current_value is not None:
+            current_body_paras.append(p)
+    if current_value is not None:
+        sections_to_apply.append((current_value, current_body_paras))
 
-        if pending_section and text.startswith("【"):
-            replacement = section_body_map.get(pending_section, "")
-            if replacement:
-                _replace_paragraph_text(p, replacement)
-            else:
-                paragraphs_to_remove.append(p)
-            pending_section = ""
+    # 应用替换：每节首段替换为新值，其余段标记删除
+    for value, body_paras in sections_to_apply:
+        if not body_paras:
+            continue
+        if value:
+            _replace_paragraph_text(body_paras[0], value)
+            for extra in body_paras[1:]:
+                paragraphs_to_remove.append(extra)
+        else:
+            for extra in body_paras:
+                paragraphs_to_remove.append(extra)
+
+    # 标题替换、删除"【填写说明】"、子系统表占位、第X级等
+    for p in paragraphs_all:
+        text = p.text.strip()
+        if not text:
             continue
 
         # 替换标题（XX → 项目名），保持格式一致
@@ -995,20 +1377,6 @@ def generate_report(template_path: str, output_path: str,
         # 清除模板中残留的"该定级对象是否采用了新技术"等说明
         if "该定级对象是否采用了新技术" in text:
             paragraphs_to_remove.append(p)
-            continue
-
-        # 替换参考示例内容
-        if "定级对象于XX年" in text and report.responsibility:
-            _replace_paragraph_text(p, report.responsibility)
-            continue
-        elif "网络中部署了XXX防火墙" in text and report.composition:
-            _replace_paragraph_text(p, report.composition)
-            continue
-        elif "该定级对象承载着综合办公业务" in text and report.business_desc:
-            _replace_paragraph_text(p, report.business_desc)
-            continue
-        elif "按照网络安全法" in text and report.security_resp:
-            _replace_paragraph_text(p, report.security_resp)
             continue
 
         # 替换子系统表描述
@@ -1162,27 +1530,52 @@ def _shade_cell_gray(cell):
 
 
 def _replace_paragraph_text(paragraph, new_text):
-    """替换段落文本，保留第一个 run 的格式"""
+    """替换段落文本，保留第一个 run 的格式。
+    若 new_text 含换行（用户在 textarea 按回车），按行拆分为多段：
+    第一行写入 paragraph，后续行在它之后插入新段落，继承原段落 pPr（含首行缩进）。
+    """
     placeholder_pattern = re.compile(r"(身份证号码[:：][X_]{3,}|X{4,}|_{3,})")
     style_run = paragraph.runs[0] if paragraph.runs else None
     if not paragraph.runs:
         paragraph.add_run("")
         style_run = paragraph.runs[0]
 
-    for run in paragraph.runs:
-        run.text = ""
+    # 拆行：兼容 \r\n / \n / \r
+    raw = (new_text or "")
+    lines = re.split(r"\r\n|\r|\n", raw)
+    if not lines:
+        lines = [""]
 
-    parts = [part for part in placeholder_pattern.split(new_text) if part]
-    if not parts:
-        parts = [new_text]
+    def _write_line_to_paragraph(para, text):
+        for run in para.runs:
+            run.text = ""
+        parts = [part for part in placeholder_pattern.split(text) if part]
+        if not parts:
+            parts = [text]
+        for idx, part in enumerate(parts):
+            run = para.runs[0] if (idx == 0 and para.runs) else para.add_run()
+            run.text = part
+            if style_run is not None:
+                _copy_run_style(style_run, run)
+            if placeholder_pattern.fullmatch(part):
+                _highlight_run(run, "yellow")
 
-    for idx, part in enumerate(parts):
-        run = paragraph.runs[0] if idx == 0 else paragraph.add_run()
-        run.text = part
-        if style_run is not None:
-            _copy_run_style(style_run, run)
-        if placeholder_pattern.fullmatch(part):
-            _highlight_run(run, "yellow")
+    # 第一行写入原段落
+    _write_line_to_paragraph(paragraph, lines[0])
+
+    # 后续行在原段落后插入新段落（继承 pPr）
+    src_pPr = paragraph._element.find(qn('w:pPr'))
+    anchor = paragraph._element
+    from docx.text.paragraph import Paragraph as _Paragraph
+    for line in lines[1:]:
+        new_p_el = OxmlElement('w:p')
+        if src_pPr is not None:
+            new_p_el.insert(0, deepcopy(src_pPr))
+        anchor.addnext(new_p_el)
+        anchor = new_p_el
+        new_para = _Paragraph(new_p_el, paragraph._parent)
+        new_para.add_run("")
+        _write_line_to_paragraph(new_para, line)
 
 
 def _cell_text_safe(table, row, col):
@@ -1193,7 +1586,15 @@ def _cell_text_safe(table, row, col):
 
 
 def _insert_topology_image(doc, image_path):
-    """在定级对象构成章节的描述文字之后插入拓扑图"""
+    """在定级对象构成章节的描述文字之后插入拓扑图。
+    若目标段已含模板预填的占位图（如示例拓扑图），先清空再插入用户图，避免重复。"""
+    def _clear_drawings(para):
+        """删除段内所有 w:drawing 元素（连带其所属 run），保留 pPr。"""
+        ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+        for r in list(para._element.findall(f'{ns}r')):
+            if r.find(f'{ns}drawing') is not None or r.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip') is not None:
+                para._element.remove(r)
+
     found_section = False
     for i, p in enumerate(doc.paragraphs):
         text = p.text.strip()
@@ -1203,15 +1604,12 @@ def _insert_topology_image(doc, image_path):
         if found_section:
             # 跳过描述性文字段落，找到第一个空段落或下一个标题之前的位置
             if not text or text.startswith("（三）") or text.startswith("（四）"):
-                # 在当前位置之前（描述段落之后）插入图片
-                # 使用上一个非空段落之后的位置
                 target_p = doc.paragraphs[i]
                 if not text:
-                    # 空段落，直接在此处插入图片
+                    _clear_drawings(target_p)
                     run = target_p.add_run()
                     run.add_picture(image_path, width=Inches(5.5))
                 else:
-                    # 到了下一个标题，在前面插入新段落
                     para = p.insert_paragraph_before()
                     run = para.add_run()
                     run.add_picture(image_path, width=Inches(5.5))

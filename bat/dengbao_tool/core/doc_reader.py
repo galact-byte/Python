@@ -138,6 +138,26 @@ def _parse_cloud_provider_line(text: str):
     return result
 
 
+def _parse_bigdata_platform_line(text: str):
+    """解析"大数据平台服务商___平台安全等级___ 平台名称___平台备案编号___"结构。"""
+    raw = (text or "").replace("\n", " ").strip()
+    result = {"provider": "", "level": "", "name": "", "code": ""}
+    if not raw:
+        return result
+
+    patterns = {
+        "provider": r"大数据平台服务商\s*(.*?)\s*平台安全等级",
+        "level": r"平台安全等级\s*(.*?)\s*平台名称",
+        "name": r"平台名称\s*(.*?)\s*平台备案编号",
+        "code": r"平台备案编号\s*([A-Za-z0-9\-]+)",
+    }
+    for key, pattern in patterns.items():
+        match = re.search(pattern, raw)
+        if match:
+            result[key] = match.group(1).strip(" _")
+    return result
+
+
 def _clean_inline_token(text: str, prefix: str = "") -> str:
     raw = re.sub(r"\s+", "", (text or ""))
     if prefix and raw.startswith(prefix):
@@ -305,8 +325,18 @@ def _parse_records_amount(text: str, prefix: str = "2") -> str:
 def read_beian_docx(path: str) -> ProjectData:
     """
     从备案表 .docx 提取数据（含勾选项解析）。
+
+    新模板按表索引读取；如检测到旧版结构（表少于 7 或 表[1] 行列不符），
+    回退到 doc_reader_legacy 的通用标签扫描。
     """
     doc = Document(path)
+    if len(doc.tables) < 7 or len(doc.tables[1].rows) < 18:
+        from core.doc_reader_legacy import read_beian_legacy
+        return read_beian_legacy(doc)
+    return _read_beian_new(doc)
+
+
+def _read_beian_new(doc) -> ProjectData:
     data = ProjectData()
 
     if len(doc.tables) < 3:
@@ -533,6 +563,50 @@ def read_beian_docx(path: str) -> ProjectData:
         if platform_cert:
             sc.cloud.platform_cert = platform_cert.replace('附件', '').strip(' _')
 
+        # 大数据（r22-r31）
+        if len(t5.rows) > 22:
+            bd_enabled = _read_first_checked(t5.rows[22].cells[2])
+            if bd_enabled == '是':
+                sc.bigdata.enabled = True
+        if len(t5.rows) > 23:
+            comp_opts = _read_checked_options(t5.rows[23].cells[2])
+            comp_list = [''.join(parts).strip() for parts in comp_opts if parts]
+            if comp_list:
+                sc.bigdata.composition = ','.join(comp_list)
+                sc.bigdata.enabled = True
+        if len(t5.rows) > 24:
+            cross = _read_first_checked(t5.rows[24].cells[2])
+            if cross:
+                sc.bigdata.cross_border = cross
+        if len(t5.rows) > 26:
+            scale_text = _cell_text(t5, 26, 2)
+            if scale_text:
+                cleaned = scale_text.replace('大数据应用数量', '').replace('个', '').strip(' _')
+                if cleaned and '_' not in cleaned:
+                    sc.bigdata.platform_scale = cleaned
+        if len(t5.rows) > 27:
+            infra = _cell_text(t5, 27, 2)
+            if infra:
+                sc.bigdata.platform_infra = infra
+        if len(t5.rows) > 28:
+            ops = _cell_text(t5, 28, 2)
+            if ops:
+                sc.bigdata.platform_ops = ops
+        if len(t5.rows) > 30:
+            bd_line_text = _cell_text(t5, 30, 2)
+            if bd_line_text and bd_line_text.strip():
+                parsed = _parse_bigdata_platform_line(bd_line_text)
+                sc.bigdata.platform_provider = parsed['provider']
+                sc.bigdata.platform_level = parsed['level']
+                sc.bigdata.platform_name = parsed['name']
+                sc.bigdata.platform_code = parsed['code']
+        if len(t5.rows) > 31:
+            cert = _cell_text(t5, 31, 2)
+            if cert:
+                cleaned = cert.replace('附件', '').strip(' _')
+                if cleaned:
+                    sc.bigdata.platform_cert = cleaned
+
     # === 表6: 附件清单 (index 5) ===
     if len(doc.tables) > 5:
         t6 = doc.tables[5]
@@ -600,8 +674,23 @@ def read_beian_docx(path: str) -> ProjectData:
 
 
 def read_report_docx(path: str) -> ReportInfo:
-    """从定级报告 .docx 提取数据"""
+    """从定级报告 .docx 提取数据。
+
+    新版按段落顺序+模板章节标题解析；如解析后大部分字段为空，回退到 legacy 扫描。
+    """
     doc = Document(path)
+    report = _read_report_new(doc)
+    has_content = any([
+        report.responsibility, report.composition, report.business_desc,
+        report.security_resp, report.biz_info_desc, report.svc_desc,
+    ])
+    if not has_content:
+        from core.doc_reader_legacy import read_report_legacy
+        return read_report_legacy(doc)
+    return report
+
+
+def _read_report_new(doc) -> ReportInfo:
     report = ReportInfo()
     paragraphs = doc.paragraphs
 
@@ -624,37 +713,47 @@ def read_report_docx(path: str) -> ReportInfo:
         elif text.startswith("（二）") and ("基本要素" in text or "网络结构" in text or "定级对象构成" in text):
             current_section = "composition"
             continue
-        elif text.startswith("（三）") and ("业务" in text or "承载" in text):
+        elif text.startswith("（三）") and ("业务" in text or "承载" in text) and "数据" not in text:
             current_section = "business"
             continue
+        elif text.startswith("（四）") and "承载数据" in text:
+            current_section = "carried_data"
+            continue
         elif text.startswith("（四）") and "安全责任" in text:
+            current_section = "security"
+            continue
+        elif text.startswith("（五）") and "安全责任" in text:
             current_section = "security"
             continue
         elif text.startswith("一、") or text.startswith("二、") or text.startswith("三、"):
             current_section = ""
             continue
-        elif "1、业务信息描述" in text:
+        elif "业务信息描述" in text and len(text) <= 30:
             current_section = "biz_info"
             continue
-        elif "2、业务信息受到破坏时所侵害客体" in text:
+        elif "所侵害客体的确定" in text and "服务" not in text and "系统" not in text:
+            # 业务侵害客体：兼容 "2、业务信息受到破坏时所侵害客体的确定" 与变体
             current_section = "biz_victim"
             continue
-        elif "3、" in text and "业务信息" in text and "程度" in text:
+        elif "侵害程度的确定" in text and "服务" not in text and "系统" not in text:
+            # 业务侵害程度：兼容 "3、业务信息..." 与 "3、信息受到破坏后对侵害客体的侵害程度的确定"
             current_section = "biz_degree"
             continue
-        elif "4、业务信息安全" in text and "确定" in text:
+        elif text.startswith("4、") and "业务信息" in text and "等级" in text and "确定" in text:
             current_section = "biz_level_result"
             continue
-        elif "1、系统服务描述" in text:
+        elif "系统服务描述" in text and len(text) <= 30:
             current_section = "svc_desc"
             continue
-        elif "2、系统服务受到破坏时所侵害客体" in text:
+        elif "所侵害客体的确定" in text and ("系统" in text or "服务" in text):
+            # 系统服务侵害客体：兼容 "2、系统服务受到破坏时所侵害客体的确定" 与 "系统受到破坏时所侵害客体的确定"（无序号无"服务"）
             current_section = "svc_victim"
             continue
-        elif "3、" in text and "系统服务" in text and "程度" in text:
+        elif "侵害程度的确定" in text and ("系统" in text or "服务" in text):
+            # 系统服务侵害程度：兼容 "3、系统服务受到破坏时/后对侵害客体的侵害程度的确定"
             current_section = "svc_degree"
             continue
-        elif "4、系统服务安全" in text and "确定" in text:
+        elif text.startswith("4、") and ("系统服务" in text or "服务" in text) and "等级" in text and "确定" in text:
             current_section = "svc_level_result"
             continue
         elif text.startswith(("1、", "2、", "3、", "4、", "（一）", "（二）", "（三）")):
@@ -669,6 +768,7 @@ def read_report_docx(path: str) -> ReportInfo:
     report.responsibility = "\n".join(section_texts.get("responsibility", []))
     report.composition = "\n".join(section_texts.get("composition", []))
     report.business_desc = "\n".join(section_texts.get("business", []))
+    report.carried_data = "\n".join(section_texts.get("carried_data", []))
     report.security_resp = "\n".join(section_texts.get("security", []))
     report.biz_info_desc = "\n".join(section_texts.get("biz_info", []))
     report.biz_victim = "\n".join(section_texts.get("biz_victim", []))
