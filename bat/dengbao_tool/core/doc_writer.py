@@ -5,15 +5,18 @@ import shutil
 import re
 from copy import deepcopy
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, RGBColor, Pt
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from docx.text.paragraph import Paragraph
 from models.project_data import ProjectData, ReportInfo
 from core.format_style import (
-    set_cell_text, FONT_FANG_GB, FONT_SONG, SIZE_TABLE, _set_east_asia_font
+    set_cell_text, FONT_FANG_GB, FONT_SONG, SIZE_TABLE, INDENT_2CHAR, _set_east_asia_font
 )
 
 
+<<<<<<< HEAD
 # 生成态：备案表强制五号(10.5pt)；定级报告保留模板字号
 _FILL_FORCE_SIZE = None
 
@@ -25,6 +28,11 @@ def _set_fill_mode(mode):
         _FILL_FORCE_SIZE = Pt(10.5)
     else:
         _FILL_FORCE_SIZE = None
+=======
+FONT_REPORT_TITLE = "方正小标宋简体"
+SIZE_REPORT_TITLE = Pt(22)
+SIZE_REPORT_BODY = Pt(14)
+>>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
 
 
 # ══════════════════════════════════════════════════════
@@ -40,6 +48,14 @@ def _highlight_run(run, color="yellow"):
     highlight = OxmlElement('w:highlight')
     highlight.set(qn('w:val'), color)
     rpr.append(highlight)
+
+
+def _clear_run_highlight(run):
+    """移除 run 上已有高亮。"""
+    rpr = run._element.get_or_add_rPr()
+    for node in list(rpr):
+        if node.tag == qn('w:highlight'):
+            rpr.remove(node)
 
 
 def _highlight_cell(cell, color="yellow"):
@@ -73,6 +89,41 @@ def _set_run_font_slots(run, east_asia_font=None, western_font=None):
         rfonts.set(qn('w:cs'), western_font)
     if east_asia_font:
         rfonts.set(qn('w:eastAsia'), east_asia_font)
+
+
+def _insert_paragraph_after(paragraph):
+    """在指定段落后插入一个新段落。"""
+    new_p = OxmlElement('w:p')
+    paragraph._p.addnext(new_p)
+    return Paragraph(new_p, paragraph._parent)
+
+
+def _apply_report_title_format(paragraph):
+    """统一报告标题格式：方正小标宋简体二号。"""
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.first_line_indent = None
+    for run in paragraph.runs:
+        run.font.bold = None
+        run.font.size = SIZE_REPORT_TITLE
+        _set_run_font_slots(
+            run,
+            east_asia_font=FONT_REPORT_TITLE,
+            western_font=FONT_REPORT_TITLE,
+        )
+
+
+def _apply_report_body_format(paragraph):
+    """统一报告正文格式：仿宋_GB2312 四号，首行缩进两字符。"""
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    paragraph.paragraph_format.first_line_indent = INDENT_2CHAR
+    for run in paragraph.runs:
+        run.font.bold = None
+        run.font.size = SIZE_REPORT_BODY
+        _set_run_font_slots(
+            run,
+            east_asia_font=FONT_FANG_GB,
+            western_font="Times New Roman",
+        )
 
 
 def _set_run_text(run, text):
@@ -767,10 +818,16 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
     if tgt.service_scope:
         code = tgt.service_scope.split('-')[0] if '-' in tgt.service_scope else tgt.service_scope
         _find_and_check(t3.rows[4].cells[2], code)
+<<<<<<< HEAD
         if code == '99' and tgt.service_scope_other:
             _fill_other_option(t3.rows[4].cells[2], '其它', tgt.service_scope_other)
         else:
             _clear_other_residue(t3.rows[4].cells[2])
+=======
+        service_scope_other = tgt.service_scope_other or ('本单位' if code == '99' else '')
+        if code == '99' and service_scope_other:
+            _fill_other_option(t3.rows[4].cells[2], '其它', service_scope_other)
+>>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
 
     # 服务对象（勾选）
     if tgt.service_target:
@@ -803,8 +860,9 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
     if tgt.interconnect:
         code = tgt.interconnect.split('-')[0] if '-' in tgt.interconnect else tgt.interconnect
         _find_and_check(t3.rows[8].cells[2], code)
-        if code == '9' and tgt.interconnect_other:
-            _fill_other_option(t3.rows[8].cells[2], '其它', tgt.interconnect_other)
+        interconnect_other = tgt.interconnect_other or ('无连接' if code == '9' else '')
+        if code == '9' and interconnect_other:
+            _fill_other_option(t3.rows[8].cells[2], '其它', interconnect_other)
 
     # 运行时间（纯值）
     _fill_date_cell(t3.rows[9].cells[2], tgt.run_date)
@@ -1276,16 +1334,24 @@ def _check_paragraph_items(cell, items):
 # ══════════════════════════════════════════════════════
 
 def generate_report(template_path: str, output_path: str,
-                    report: ReportInfo, project_name: str, highlighted_fields=None):
+                    report: ReportInfo, project_name: str, highlighted_fields=None,
+                    report_highlights=None):
     """基于新定级报告模版生成填充后的定级报告"""
     if highlighted_fields is None:
         highlighted_fields = []
+<<<<<<< HEAD
     _set_fill_mode('report')
+=======
+    if report_highlights is None:
+        report_highlights = {}
+    system_name = (report.system_name or project_name or "").strip()
+>>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
     shutil.copy2(template_path, output_path)
     doc = Document(output_path)
 
     # ── 第一遍：替换文本、删除说明 ──
     paragraphs_to_remove = []
+<<<<<<< HEAD
 
     # 章节标题 → 该章节正文应替换的字段值
     section_title_to_value = {
@@ -1300,6 +1366,15 @@ def generate_report(template_path: str, output_path: str,
         "1、系统服务描述": report.svc_desc,
         "2、系统服务受到破坏时所侵害客体的确定": report.svc_victim,
         "3、系统服务受到破坏时对侵害客体的侵害程度的确定": report.svc_degree,
+=======
+    section_body_map = {
+        "1、业务信息描述": (report.biz_info_desc, "rpt_biz_info", False),
+        "2、业务信息受到破坏时所侵害客体的确定": (report.biz_victim, "rpt_biz_victim", False),
+        "3、业务信息受到破坏时对侵害客体的侵害程度的确定": (report.biz_degree, "rpt_biz_degree", False),
+        "1、系统服务描述": (report.svc_desc, "rpt_svc_desc", False),
+        "2、系统服务受到破坏时所侵害客体的确定": (report.svc_victim, "rpt_svc_victim", False),
+        "3、系统服务受到破坏时对侵害客体的侵害程度的确定": (report.svc_degree, "rpt_svc_degree", False),
+>>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
     }
 
     # 按段落顺序划分章节正文（标题段之后、下一个标题之前的所有非空段为该节正文）
@@ -1342,6 +1417,7 @@ def generate_report(template_path: str, output_path: str,
     if current_value is not None:
         sections_to_apply.append((current_value, current_body_paras))
 
+<<<<<<< HEAD
     # 应用替换：每节首段替换为新值，其余段标记删除
     for value, body_paras in sections_to_apply:
         if not body_paras:
@@ -1358,13 +1434,27 @@ def generate_report(template_path: str, output_path: str,
     for p in paragraphs_all:
         text = p.text.strip()
         if not text:
+=======
+        if pending_section and text.startswith("【"):
+            replacement, field_id, split_lines = section_body_map.get(pending_section, ("", "", False))
+            if replacement:
+                _replace_body_paragraphs(
+                    p,
+                    replacement,
+                    split_lines=split_lines,
+                    highlight_snippets=report_highlights.get(field_id, []),
+                )
+            else:
+                paragraphs_to_remove.append(p)
+            pending_section = ""
+>>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
             continue
 
         # 替换标题（XX → 项目名），保持格式一致
         if "XX" in text and "定级报告" in text:
-            for run in p.runs:
-                if "XX" in run.text:
-                    run.text = run.text.replace("XX", project_name)
+            _replace_paragraph_text(p, text.replace("XX", system_name))
+            _apply_report_title_format(p)
+            continue
 
         # 清除所有填写说明（【...】标记的内容）
         if text.startswith("【") or "【填写说明" in text or "【描述参考示例】" in text or "【网络边界描述示例】" in text:
@@ -1379,19 +1469,56 @@ def generate_report(template_path: str, output_path: str,
             paragraphs_to_remove.append(p)
             continue
 
+<<<<<<< HEAD
+=======
+        # 替换参考示例内容
+        if "定级对象于XX年" in text and report.responsibility:
+            _replace_body_paragraphs(
+                p,
+                report.responsibility,
+                split_lines=False,
+                highlight_snippets=report_highlights.get("rpt_responsibility", []),
+            )
+            continue
+        elif "网络中部署了XXX防火墙" in text and report.composition:
+            _replace_body_paragraphs(
+                p,
+                report.composition,
+                split_lines=True,
+                highlight_snippets=report_highlights.get("rpt_composition", []),
+            )
+            continue
+        elif "该定级对象承载着综合办公业务" in text and report.business_desc:
+            _replace_body_paragraphs(
+                p,
+                report.business_desc,
+                split_lines=False,
+                highlight_snippets=report_highlights.get("rpt_business", []),
+            )
+            continue
+        elif "按照网络安全法" in text and report.security_resp:
+            _replace_body_paragraphs(
+                p,
+                report.security_resp,
+                split_lines=False,
+                highlight_snippets=report_highlights.get("rpt_security", []),
+            )
+            continue
+
+>>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
         # 替换子系统表描述
         if "该定级对象包括以下子系统" in text:
             if not report.subsystems:
                 paragraphs_to_remove.append(p)
             else:
-                _replace_paragraph_text(p, "该定级对象包括以下子系统：")
+                _replace_body_paragraphs(p, "该定级对象包括以下子系统：")
 
         # 替换等级占位
         if "第X级" in text:
             new_text = text
             if "最终确定" in text:
                 new_text = text.replace("第X级", report.final_level)
-                new_text = new_text.replace("XXX", project_name)
+                new_text = new_text.replace("XXX", system_name)
             elif "业务信息安全保护等级" in text and "系统服务" not in text:
                 new_text = text.replace("第X级", report.biz_level)
             elif "系统服务安全保护等级" in text:
@@ -1399,12 +1526,12 @@ def generate_report(template_path: str, output_path: str,
             else:
                 new_text = text.replace("第X级", report.final_level)
             if new_text != text:
-                _replace_paragraph_text(p, new_text)
+                _replace_body_paragraphs(p, new_text)
                 continue
 
         # 替换 XXX
         if "XXX" in text and "第X级" not in text:
-            _replace_paragraph_text(p, text.replace("XXX", project_name))
+            _replace_body_paragraphs(p, text.replace("XXX", system_name))
 
     # 删除标记的段落
     for p in paragraphs_to_remove:
@@ -1442,7 +1569,7 @@ def generate_report(template_path: str, output_path: str,
     for table in doc.tables:
         if _cell_text_safe(table, 0, 0) == "定级对象名称":
             if len(table.rows) > 1:
-                _safe_set_value(table, 1, 0, project_name)
+                _safe_set_value(table, 1, 0, system_name)
                 _safe_set_value(table, 1, 1, report.final_level)
                 _safe_set_value(table, 1, 2, report.biz_level)
                 _safe_set_value(table, 1, 3, report.svc_level)
@@ -1484,8 +1611,6 @@ def _shade_matrix_tables(doc, report):
         col_idx = _match_matrix_col(degree_text)
         if row_idx is None or col_idx is None:
             continue
-        _shade_cell_gray(table.rows[row_idx].cells[0])
-        _shade_cell_gray(table.rows[1].cells[col_idx])
         _shade_cell_gray(table.rows[row_idx].cells[col_idx])
 
 
@@ -1576,6 +1701,111 @@ def _replace_paragraph_text(paragraph, new_text):
         new_para = _Paragraph(new_p_el, paragraph._parent)
         new_para.add_run("")
         _write_line_to_paragraph(new_para, line)
+
+
+def _highlight_text_in_paragraph(paragraph, target):
+    """在单段中高亮首个命中的文本片段。"""
+    raw_target = str(target or "")
+    if not raw_target:
+        return False
+    target = raw_target.strip()
+    if not target:
+        return False
+
+    for run in list(paragraph.runs):
+        run_text = run.text or ""
+        if not run_text or target not in run_text:
+            continue
+        if run_text == target:
+            _highlight_run(run, "yellow")
+            return True
+
+        before, _, after = run_text.partition(target)
+        style_run = run
+        if before:
+            run.text = before
+            _clear_run_highlight(run)
+            match_run = _insert_run_after(run)
+            _copy_run_style(style_run, match_run)
+        else:
+            match_run = run
+
+        match_run.text = target
+        _highlight_run(match_run, "yellow")
+
+        if after:
+            after_run = _insert_run_after(match_run)
+            _copy_run_style(style_run, after_run)
+            _clear_run_highlight(after_run)
+            after_run.text = after
+        return True
+    return False
+
+
+def _highlight_snippets_in_paragraphs(paragraphs, snippets):
+    """将选中的正文片段高亮到对应段落。"""
+    for snippet in snippets or []:
+        raw = str(snippet or "").strip()
+        if not raw:
+            continue
+        for paragraph in paragraphs:
+            if raw in paragraph.text and _highlight_text_in_paragraph(paragraph, raw):
+                break
+
+
+def _normalize_single_paragraph_text(text):
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    collapsed = re.sub(r"\s*\r?\n\s*", "", raw)
+    return re.sub(r"[ \t]+", " ", collapsed).strip()
+
+
+def _normalize_highlight_snippets(snippets, split_lines=False):
+    normalized = []
+    for snippet in snippets or []:
+        raw = str(snippet or "").strip()
+        if not raw:
+            continue
+        if split_lines:
+            normalized.extend(part.strip() for part in re.split(r"\r?\n+", raw) if part.strip())
+        else:
+            single = _normalize_single_paragraph_text(raw)
+            if single:
+                normalized.append(single)
+    return normalized
+
+
+def _replace_body_paragraphs(paragraph, text, split_lines=False, highlight_snippets=None):
+    """按报告正文格式写入段落，并支持局部标黄。"""
+    if split_lines:
+        lines = [line.strip() for line in re.split(r"\r?\n+", str(text or "")) if line.strip()]
+    else:
+        single = _normalize_single_paragraph_text(text)
+        lines = [single] if single else []
+    if not lines:
+        _replace_paragraph_text(paragraph, "")
+        _apply_report_body_format(paragraph)
+        return
+
+    _replace_paragraph_text(paragraph, lines[0])
+    _apply_report_body_format(paragraph)
+
+    paragraphs = [paragraph]
+    anchor = paragraph
+    for line in lines[1:]:
+        new_paragraph = _insert_paragraph_after(anchor)
+        if paragraph.style is not None:
+            new_paragraph.style = paragraph.style
+        _replace_paragraph_text(new_paragraph, line)
+        _apply_report_body_format(new_paragraph)
+        anchor = new_paragraph
+        paragraphs.append(new_paragraph)
+
+    _highlight_snippets_in_paragraphs(
+        paragraphs,
+        _normalize_highlight_snippets(highlight_snippets, split_lines=split_lines),
+    )
 
 
 def _cell_text_safe(table, row, col):
