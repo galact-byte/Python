@@ -67,12 +67,13 @@ class EditorPage(PageBase):
         self.btn_save_as = QPushButton("另存为新卡")
         self.btn_overwrite = QPushButton("覆盖原卡并备份")
         self.btn_overwrite.setProperty("accent", "danger")
+        self.btn_diff = QPushButton("预览写回差异")
         self.btn_convert = QPushButton("转换 KK / KKS")
         self.btn_preview = QPushButton("更换预览图")
         self.btn_export = QPushButton("导出 JSON")
         for b in (
             self.btn_open, self.btn_save_as, self.btn_overwrite,
-            self.btn_convert, self.btn_preview, self.btn_export,
+            self.btn_diff, self.btn_convert, self.btn_preview, self.btn_export,
         ):
             toolbar.addWidget(b)
         toolbar.addStretch(1)
@@ -81,6 +82,7 @@ class EditorPage(PageBase):
         self.btn_open.clicked.connect(self._open_card)
         self.btn_save_as.clicked.connect(self._save_as_new)
         self.btn_overwrite.clicked.connect(self._overwrite)
+        self.btn_diff.clicked.connect(self._preview_diff)
         self.btn_convert.clicked.connect(self._convert_game)
         self.btn_preview.clicked.connect(self._change_preview)
         self.btn_export.clicked.connect(self._export_json)
@@ -200,7 +202,7 @@ class EditorPage(PageBase):
 
     def _set_enabled(self, on: bool) -> None:
         for b in (self.btn_save_as, self.btn_overwrite, self.btn_convert,
-                  self.btn_preview, self.btn_export):
+                  self.btn_diff, self.btn_preview, self.btn_export):
             b.setEnabled(on)
 
     # ---------- 读卡与填充 ----------
@@ -459,57 +461,127 @@ class EditorPage(PageBase):
     # ---------- 收集与保存 ----------
 
     def _collect_updates(self) -> dict:
+        """只收集用户**真正改动过**的字段。
+
+        关键：未改动的字段一律不写回，由 update_parameter 保留精确原值——
+        尤其浮点(voiceRate)经 spinbox 会丢精度，只有当用户把它从初始显示值挪开
+        才采用 spinbox 值，否则保留原始精确浮点。这样"不改即存"= 字节级原样。
+        """
         param = self.card.parameter or {}
-        updates: dict = {
-            "lastname": self.ed_lastname.text(),
-            "firstname": self.ed_firstname.text(),
-            "nickname": self.ed_nickname.text(),
-            "birthMonth": self.sp_month.value(),
-            "birthDay": self.sp_day.value(),
-        }
+        updates: dict = {}
+
+        def put(key, value):
+            if param.get(key) != value:
+                updates[key] = value
+
+        put("lastname", self.ed_lastname.text())
+        put("firstname", self.ed_firstname.text())
+        put("nickname", self.ed_nickname.text())
+        put("birthMonth", self.sp_month.value())
+        put("birthDay", self.sp_day.value())
         if self.cb_personality.isEnabled() and self.cb_personality.currentData() is not None:
-            updates["personality"] = int(self.cb_personality.currentData())
+            put("personality", int(self.cb_personality.currentData()))
         if self.cb_blood.isEnabled() and self.cb_blood.currentData() is not None:
-            updates["bloodType"] = int(self.cb_blood.currentData())
+            put("bloodType", int(self.cb_blood.currentData()))
         if self.ed_club.isEnabled():
             txt = self.ed_club.text()
             if self._club_was_int:
                 try:
-                    updates["clubActivities"] = int(txt)
+                    put("clubActivities", int(txt))
                 except ValueError:
                     pass
             else:
-                updates["clubActivities"] = txt
+                put("clubActivities", txt)
         if self._note_key:
-            updates[self._note_key] = self.ed_note.text()
+            put(self._note_key, self.ed_note.text())
 
-        # 嵌套布尔字典：在原字典副本上回填，保留 ExtendedSaveData 等占位键
+        # 嵌套布尔字典：仅当确有勾选变化才写回，保留 ExtendedSaveData 等占位键
         def merge(field_name, checks):
             src = param.get(field_name)
             if isinstance(src, dict) and checks:
                 d = copy.deepcopy(src)
+                changed = False
                 for k, cb in checks.items():
-                    if k in d:
+                    if k in d and d[k] != cb.isChecked():
                         d[k] = cb.isChecked()
-                updates[field_name] = d
+                        changed = True
+                if changed:
+                    updates[field_name] = d
 
-        ans_field = "answer" if "answer" in param else "awnser"
-        merge(ans_field, self.answer_checks)
+        merge("answer" if "answer" in param else "awnser", self.answer_checks)
         merge("attribute", self.attr_checks)
         merge("denial", self.denial_checks)
 
+        # 数值/浮点：未挪动则不写回，保留精确原值
         for key, sp in getattr(self, "h_spins", {}).items():
-            if key in param:
-                updates[key] = sp.value()
+            if key not in param:
+                continue
+            orig = param.get(key)
+            val = sp.value()
+            if isinstance(sp, QDoubleSpinBox):
+                # 浮点：与"原值按显示精度四舍五入"比较，相等视为未改动
+                if isinstance(orig, (int, float)) and abs(val - round(float(orig), sp.decimals())) < 10 ** (-sp.decimals() - 1):
+                    continue
+                put(key, float(val))
+            else:
+                if orig != val:
+                    updates[key] = int(val)
         return updates
 
     def _apply_updates(self) -> bool:
         try:
-            self.card.update_parameter(self._collect_updates())
+            updates = self._collect_updates()
+            if updates:   # 无改动则完全不碰 Parameter 块，保证字节级原样
+                self.card.update_parameter(updates)
             return True
         except KKCardError as exc:
             QMessageBox.warning(self, "写入失败", str(exc))
             return False
+
+    # ---------- 预览写回差异 ----------
+
+    _NESTED_LABELS = {
+        "awnser": ("提问", kk_fields.ANSWER_LABELS),
+        "answer": ("提问", kk_fields.ANSWER_LABELS),
+        "attribute": ("特点", kk_fields.ATTRIBUTE_LABELS),
+        "denial": ("H接受", kk_fields.DENIAL_LABELS),
+    }
+
+    def _fmt_val(self, key: str, val) -> str:
+        if isinstance(val, bool):
+            return "是" if val else "否"
+        if key == "personality":
+            return f"{val}({kk_enums.personality_name(val, self.card.game)})"
+        if key == "bloodType":
+            return f"{val}({kk_enums.blood_type_name(val)})"
+        return str(val)
+
+    def _preview_diff(self) -> None:
+        if not self.card:
+            return
+        current = self.card.parameter or {}
+        pending = self._collect_updates()
+        lines: list[str] = []
+        for key, new_val in pending.items():
+            old_val = current.get(key)
+            if isinstance(new_val, dict) and isinstance(old_val, dict):
+                cat, lblmap = self._NESTED_LABELS.get(key, (key, {}))
+                for sk, nv in new_val.items():
+                    if sk in kk_fields.SKIP_KEYS:
+                        continue
+                    ov = old_val.get(sk)
+                    if ov != nv:
+                        name = kk_fields.label_for(sk, lblmap)
+                        lines.append(f"  {cat}·{name}: {self._fmt_val(sk, ov)} → {self._fmt_val(sk, nv)}")
+            elif old_val != new_val:
+                lbl = kk_fields.SCALAR_LABELS.get(key, key)
+                lines.append(f"  {lbl}: {self._fmt_val(key, old_val)} → {self._fmt_val(key, new_val)}")
+        if not lines:
+            QMessageBox.information(self, "预览写回差异", "没有字段变更，写回后与原卡一致。")
+            return
+        QMessageBox.information(
+            self, "预览写回差异",
+            f"将写回以下 {len(lines)} 处变更（其余块字节级保留）：\n\n" + "\n".join(lines))
 
     def _save_as_new(self) -> None:
         if not self.card or not self._apply_updates():

@@ -142,8 +142,41 @@ def extract_characters_to(scene_path: str | Path, out_dir: str | Path) -> list[s
     return saved
 
 
+_UAR_SIG = b"com.bepis.sideloader.universalautoresolver"
+
+
+def extract_scene_mod_ids(data: bytes) -> dict[str, int]:
+    """提取场景级 Sideloader 依赖（studio 道具/姿势/地图等的 ModID）。
+
+    场景里也存了 UAR：紧跟签名的是 [版本, {"info": [blob...]}]，每个 blob 再 msgpack
+    解出 ModID（与角色卡同构）。无 studio mod 依赖的场景该 info 为空，返回空字典。
+    """
+    out: dict[str, int] = {}
+    pos = data.find(_UAR_SIG)
+    if pos < 0:
+        return out
+    up = msgpack.Unpacker(raw=False, strict_map_key=False)
+    up.feed(data[pos + len(_UAR_SIG):])
+    try:
+        val = next(iter(up))
+    except Exception:  # noqa: BLE001
+        return out
+    if isinstance(val, (list, tuple)) and len(val) >= 2 and isinstance(val[1], dict):
+        for blob in val[1].get("info") or []:
+            if isinstance(blob, (bytes, bytearray)):
+                try:
+                    d = msgpack.unpackb(blob, raw=False, strict_map_key=False)
+                except Exception:  # noqa: BLE001
+                    continue
+                if isinstance(d, dict):
+                    mid = d.get("ModID")
+                    if isinstance(mid, str) and mid:
+                        out[mid] = out.get(mid, 0) + 1
+    return out
+
+
 def analyze_scene(scene_path: str | Path) -> dict:
-    """分析场景卡：内嵌角色名单 + 聚合的 mod 依赖。"""
+    """分析场景卡：内嵌角色名单 + 聚合的 mod 依赖（内嵌角色 + 场景级 studio 道具）。"""
     data = Path(scene_path).read_bytes()
     cards = find_embedded_characters(data)
     characters = []
@@ -153,10 +186,15 @@ def analyze_scene(scene_path: str | Path) -> dict:
         for g, n in mods.items():
             all_mods[g] = all_mods.get(g, 0) + n
         characters.append({"name": _chara_name(card), "game": card.game, "mods": len(mods)})
+    # 场景级 studio 道具依赖
+    scene_mods = extract_scene_mod_ids(data)
+    for g, n in scene_mods.items():
+        all_mods[g] = all_mods.get(g, 0) + n
     return {
         "path": str(scene_path),
         "size": len(data),
         "character_count": len(cards),
         "characters": characters,
         "mod_ids": all_mods,
+        "scene_mod_count": len(scene_mods),
     }

@@ -30,6 +30,7 @@ def check_dependencies() -> None:
         "PyQt6": "PyQt6",
         "msgpack": "msgpack",
         "PIL": "Pillow",
+        "pyzipper": "pyzipper",
     }
     for import_name, install_name in packages.items():
         try:

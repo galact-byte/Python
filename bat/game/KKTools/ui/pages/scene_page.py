@@ -90,7 +90,7 @@ class ScenePage(PageBase):
             f"文件: {Path(info['path']).name}",
             f"大小: {info['size']} 字节",
             f"内嵌角色数: {info['character_count']}",
-            f"聚合 mod 依赖数: {len(info['mod_ids'])}",
+            f"聚合 mod 依赖数: {len(info['mod_ids'])}  (其中场景级 studio 道具 {info.get('scene_mod_count', 0)} 个)",
             "",
             "内嵌角色:",
         ]

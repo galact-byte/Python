@@ -10,6 +10,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
@@ -86,6 +87,16 @@ class PackPage(PageBase):
         b_out.clicked.connect(lambda: self._pick_dir(self.unpack_out))
         out.addWidget(QLabel("输出")); out.addWidget(self.unpack_out, 1); out.addWidget(b_out)
         v.addLayout(out)
+        opt = QHBoxLayout()
+        self.opt_del_src = QCheckBox("解包成功后删除源文件")
+        self.opt_clear_queue = QCheckBox("解压完清空队列")
+        opt.addWidget(self.opt_del_src); opt.addWidget(self.opt_clear_queue); opt.addStretch(1)
+        v.addLayout(opt)
+        pw_row = QHBoxLayout()
+        self.unpack_pwds = QLineEdit()
+        self.unpack_pwds.setPlaceholderText("解密密码（加密包用，多个用逗号分隔；不加密可留空）")
+        pw_row.addWidget(QLabel("密码")); pw_row.addWidget(self.unpack_pwds, 1)
+        v.addLayout(pw_row)
         b_go = QPushButton("开始解包"); b_go.setProperty("accent", "primary")
         b_go.clicked.connect(self._do_unpack)
         v.addWidget(b_go)
@@ -106,6 +117,9 @@ class PackPage(PageBase):
             QMessageBox.warning(self, "无输出目录", "请选择解包输出目录。")
             return
         settings.set_value("output_dir", out)
+        del_src = self.opt_del_src.isChecked()
+        clear_q = self.opt_clear_queue.isChecked()
+        pwds = [p.strip() for p in self.unpack_pwds.text().split(",") if p.strip()]
 
         def job(progress=None):
             results = []
@@ -114,13 +128,25 @@ class PackPage(PageBase):
                     results.append(f"[跳过] 非压缩包: {Path(f).name}")
                     continue
                 sub = Path(out) / Path(f).stem
-                names = stego.extract_archive(f, sub)
+                try:
+                    names = stego.extract_archive(f, sub, passwords=pwds)
+                except Exception as exc:  # noqa: BLE001
+                    results.append(f"[X] {Path(f).name}: {exc}（可能需要正确密码）")
+                    continue
                 results.append(f"[OK] {Path(f).name} -> {len(names)} 个文件")
+                if del_src:
+                    try:
+                        Path(f).unlink()
+                        results.append(f"      已删除源文件: {Path(f).name}")
+                    except OSError as exc:
+                        results.append(f"      [!] 删除源文件失败: {exc}")
                 if progress:
                     progress(idx, len(files), Path(f).name)
             return results
 
         self._run(job, "解包")
+        if clear_q and self._worker:
+            self._worker.finished_ok.connect(lambda *_: self.unpack_list.clear())
 
     # ---- 打包伪装 ----
 
@@ -141,6 +167,13 @@ class PackPage(PageBase):
         self.split_size.setRange(0, 100000); self.split_size.setValue(0); self.split_size.setDecimals(0)
         split_row.addWidget(self.split_size); split_row.addStretch(1)
         v.addLayout(split_row)
+
+        enc_row = QHBoxLayout()
+        self.enc_enable = QCheckBox("启用密码加密(AES-256)")
+        self.enc_pwd = QLineEdit(); self.enc_pwd.setPlaceholderText("加密密码")
+        self.enc_pwd.setEchoMode(QLineEdit.EchoMode.Password)
+        enc_row.addWidget(self.enc_enable); enc_row.addWidget(self.enc_pwd, 1)
+        v.addLayout(enc_row)
 
         b_go = QPushButton("开始打包伪装"); b_go.setProperty("accent", "primary")
         b_go.clicked.connect(self._do_pack)
@@ -181,10 +214,13 @@ class PackPage(PageBase):
         if not out:
             QMessageBox.warning(self, "无效", "请指定输出文件路径。"); return
         split_mb = self.split_size.value()
+        password = self.enc_pwd.text() if self.enc_enable.isChecked() else None
+        if self.enc_enable.isChecked() and not password:
+            QMessageBox.warning(self, "无密码", "已勾选加密但未填密码。"); return
 
         def job(progress=None):
-            stego.pack_and_disguise(folder, carrier, out, progress=progress)
-            msgs = [f"[OK] 已伪装: {Path(out).name}"]
+            stego.pack_and_disguise(folder, carrier, out, password=password, progress=progress)
+            msgs = [f"[OK] 已伪装{'(AES加密)' if password else ''}: {Path(out).name}"]
             if split_mb > 0:
                 parts = stego.split_file(out, split_mb)
                 msgs.append(f"[OK] 已分卷为 {len(parts)} 个分片")

@@ -42,12 +42,16 @@ TYPE_COLORS = {
     "other": "#8b949e",       # 其它 灰
 }
 
+# 单次最多在网格里渲染的卡片数（整合版场景卡上万，全渲染会拖垮 UI 与内存）
+MAX_DISPLAY = 3000
+
 
 class BrowserPage(PageBase):
     def __init__(self, on_open_card: Callable[[str], None] | None = None):
         super().__init__("卡片浏览器", "扫描目录，识别角色卡 / 服装卡 / 场景卡，缩略图墙预览")
         self.on_open_card = on_open_card
         self._items: list[CardItem] = []
+        self._icon_cache: dict[str, QIcon] = {}
         self._worker: Worker | None = None
         self._build_ui()
 
@@ -149,6 +153,7 @@ class BrowserPage(PageBase):
     def _on_scanned(self, items: list[CardItem]) -> None:
         self.progress.setVisible(False)
         self._items = items
+        self._icon_cache.clear()   # 新一批卡片，旧图标缓存作废
         self.btn_csv.setEnabled(bool(items))
         log(f"扫描完成，共 {len(items)} 张卡片")
         self._apply_filter()
@@ -165,25 +170,41 @@ class BrowserPage(PageBase):
         kw = self.search.text().strip().lower()
         self.grid.clear()
         shown = 0
+        capped = False
         for it in self._items:
             if type_key != "all" and it.type != type_key:
                 continue
             hay = f"{it.name} {Path(it.path).name}".lower()
             if kw and kw not in hay:
                 continue
+            if shown >= MAX_DISPLAY:
+                capped = True
+                break
             self._add_item(it)
             shown += 1
         counts = {}
         for it in self._items:
             counts[it.type] = counts.get(it.type, 0) + 1
         summary = "  ".join(f"{TYPE_LABELS.get(k,k)}:{v}" for k, v in counts.items())
-        self.status.setText(f"显示 {shown} / {len(self._items)} 张    [{summary}]")
+        tail = f"（已达显示上限 {MAX_DISPLAY}，请用筛选/搜索缩小或扫描子目录）" if capped else ""
+        self.status.setText(f"显示 {shown} / {len(self._items)} 张    [{summary}]{tail}")
 
     def _add_item(self, it: CardItem) -> None:
-        pix = QPixmap()
-        if it.thumbnail:
-            pix.loadFromData(it.thumbnail)
-        icon = QIcon(pix) if not pix.isNull() else QIcon()
+        # 图标缓存：按路径缓存降采样后的小 QPixmap，原始缩略图字节用完即释放。
+        # 这样重新筛选/搜索时能复用，且不会让上千张全尺寸 PNG 常驻内存。
+        icon = self._icon_cache.get(it.path)
+        if icon is None:
+            pix = QPixmap()
+            if it.thumbnail:
+                pix.loadFromData(it.thumbnail)
+            if not pix.isNull():
+                pix = pix.scaled(self.grid.iconSize(), Qt.AspectRatioMode.KeepAspectRatio,
+                                 Qt.TransformationMode.SmoothTransformation)
+                icon = QIcon(pix)
+            else:
+                icon = QIcon()
+            self._icon_cache[it.path] = icon
+            it.thumbnail = b""   # 已转成小图标，释放原始字节
         label = it.name or Path(it.path).stem
         tag = TYPE_LABELS.get(it.type, it.type)
         if it.game in ("KK", "KKS"):
