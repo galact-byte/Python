@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
-from core.kk_card import KNOWN_MARKERS, KoikatuCard, classify
+from core.kk_card import read_card_light
 
 TYPE_LABELS = {
     "character": "角色卡",
@@ -25,42 +25,16 @@ class CardItem:
     thumbnail: bytes     # 缩略图字节（PNG）
 
 
-def _read_head(path: Path, head_bytes: int = 0) -> bytes:
-    return path.read_bytes()
-
-
 def scan_item(path: Path) -> CardItem | None:
-    """识别单个 PNG 文件，返回 CardItem；非卡片 PNG 也会返回 type=other。"""
+    """轻量识别单个 PNG：只读缩略图+头部，不整文件读取（见 read_card_light）。"""
     try:
-        data = path.read_bytes()
+        info = read_card_light(path)
     except OSError:
         return None
-    if data[:8] != b"\x89PNG\r\n\x1a\n":
-        return None
-    ctype, game, _marker = classify(data)
-    name = ""
-    thumb = b""
-    if ctype == "character":
-        try:
-            card = KoikatuCard.from_bytes(data)
-            thumb = card.thumbnail
-            p = card.parameter or {}
-            name = f"{p.get('lastname','')}{p.get('firstname','')}".strip() or p.get("nickname", "")
-        except Exception:  # noqa: BLE001
-            thumb = _first_png(data)
-    else:
-        thumb = _first_png(data)
-    return CardItem(path=str(path), type=ctype, game=game, name=name, thumbnail=thumb)
-
-
-def _first_png(data: bytes) -> bytes:
-    from core.kk_card import KKCardError, png_data_length
-
-    try:
-        n = png_data_length(data, 0)
-        return data[:n]
-    except KKCardError:
-        return b""
+    return CardItem(
+        path=str(path), type=info.type, game=info.game,
+        name=info.name, thumbnail=info.thumbnail,
+    )
 
 
 def scan_dir(

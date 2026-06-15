@@ -93,3 +93,107 @@ def build_share_package(
     report["total_missing"] = sorted(report["total_missing"])
     report["copied_mods"] = sorted(report["copied_mods"])
     return report
+
+
+def restore_package(
+    pkg_dir: str | Path,
+    card_target: str | Path,
+    mod_target: str | Path | None = None,
+    *,
+    progress: Callable[[int, int, str], None] | None = None,
+) -> dict:
+    """导入/恢复分享包：把包里的卡片复制到 card_target，zipmod 复制到 mod_target。
+
+    兼容本程序生成的分享包（card/ + mods/ 结构），也兼容任意含 PNG/zipmod 的目录。
+    已存在同名文件则跳过，不覆盖。
+    """
+    pkg = Path(pkg_dir)
+    cards = [p for p in pkg.rglob("*.png") if p.is_file()]
+    mods = [p for p in pkg.rglob("*.zipmod") if p.is_file()]
+    Path(card_target).mkdir(parents=True, exist_ok=True)
+    copied_cards = skipped_cards = copied_mods = skipped_mods = 0
+    total = len(cards) + len(mods)
+    done = 0
+    for p in cards:
+        dst = Path(card_target) / p.name
+        if dst.exists():
+            skipped_cards += 1
+        else:
+            shutil.copy2(p, dst); copied_cards += 1
+        done += 1
+        if progress and done % 20 == 0:
+            progress(done, total, p.name)
+    if mod_target:
+        Path(mod_target).mkdir(parents=True, exist_ok=True)
+        for p in mods:
+            dst = Path(mod_target) / p.name
+            if dst.exists():
+                skipped_mods += 1
+            else:
+                shutil.copy2(p, dst); copied_mods += 1
+            done += 1
+            if progress and done % 20 == 0:
+                progress(done, total, p.name)
+    return {
+        "cards": copied_cards, "cards_skipped": skipped_cards,
+        "mods": copied_mods, "mods_skipped": skipped_mods,
+    }
+
+
+def organize_cards(
+    card_dir: str | Path,
+    out_dir: str | Path,
+    *,
+    by: str = "type",
+    move: bool = False,
+    progress: Callable[[int, int, str], None] | None = None,
+) -> dict:
+    """整理卡片：按类型(type)或角色名(character)归类复制/移动到 out_dir/<分组>/。"""
+    from core.card_scan import TYPE_LABELS
+    from core.kk_card import read_card_light
+
+    src = Path(card_dir)
+    out = Path(out_dir)
+    files = [p for p in src.rglob("*.png") if p.is_file()]
+    total = len(files)
+    done = organized = 0
+    for p in files:
+        done += 1
+        try:
+            info = read_card_light(p)
+        except OSError:
+            continue
+        if by == "character":
+            group = (info.name or "未命名").strip()
+        else:
+            group = TYPE_LABELS.get(info.type, "其它")
+        group = "".join(c for c in group if c not in r'\/:*?"<>|').strip() or "未分类"
+        dst_dir = out / group
+        dst = dst_dir / p.name
+        try:
+            if dst.exists() or src.resolve() == out.resolve():
+                pass
+            else:
+                dst_dir.mkdir(parents=True, exist_ok=True)
+                if move:
+                    shutil.move(str(p), str(dst))
+                else:
+                    shutil.copy2(p, dst)
+                organized += 1
+        except OSError:
+            pass
+        if progress and (done % 30 == 0 or done == total):
+            progress(done, total, p.name)
+    return {"processed": done, "organized": organized, "by": by, "move": move}
+
+
+def reconcile_dirs(dir_a: str | Path, dir_b: str | Path) -> dict:
+    """离线对账：比对两个目录的文件（按文件名），列出只在A/只在B/共有。"""
+    a = {p.name for p in Path(dir_a).rglob("*") if p.is_file()}
+    b = {p.name for p in Path(dir_b).rglob("*") if p.is_file()}
+    return {
+        "only_a": sorted(a - b),
+        "only_b": sorted(b - a),
+        "both": len(a & b),
+        "count_a": len(a), "count_b": len(b),
+    }

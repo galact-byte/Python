@@ -124,6 +124,127 @@ def write_cs_string(text: str) -> bytes:
     return write_7bit_int(len(raw)) + raw
 
 
+def _contains_float(o) -> bool:
+    if isinstance(o, float):
+        return True
+    if isinstance(o, dict):
+        return any(_contains_float(v) for v in o.values())
+    if isinstance(o, (list, tuple)):
+        return any(_contains_float(v) for v in o)
+    return False
+
+
+def _skip_msgpack(buf: bytes, pos: int) -> int:
+    """返回 buf 中从 pos 起一个完整 msgpack 对象之后的结束位置。"""
+    c = buf[pos]
+    pos += 1
+    if c <= 0x7F or c >= 0xE0 or c in (0xC0, 0xC2, 0xC3):
+        return pos
+    if 0x80 <= c <= 0x8F:
+        for _ in range((c & 0x0F) * 2):
+            pos = _skip_msgpack(buf, pos)
+        return pos
+    if 0x90 <= c <= 0x9F:
+        for _ in range(c & 0x0F):
+            pos = _skip_msgpack(buf, pos)
+        return pos
+    if 0xA0 <= c <= 0xBF:
+        return pos + (c & 0x1F)
+    if c == 0xC4:
+        return pos + 1 + buf[pos]
+    if c == 0xC5:
+        return pos + 2 + int.from_bytes(buf[pos:pos + 2], "big")
+    if c == 0xC6:
+        return pos + 4 + int.from_bytes(buf[pos:pos + 4], "big")
+    if c == 0xC7:
+        return pos + 1 + 1 + buf[pos]
+    if c == 0xC8:
+        return pos + 2 + 1 + int.from_bytes(buf[pos:pos + 2], "big")
+    if c == 0xC9:
+        return pos + 4 + 1 + int.from_bytes(buf[pos:pos + 4], "big")
+    _FIXED = {0xCA: 4, 0xCB: 8, 0xCC: 1, 0xCD: 2, 0xCE: 4, 0xCF: 8,
+              0xD0: 1, 0xD1: 2, 0xD2: 4, 0xD3: 8}
+    if c in _FIXED:
+        return pos + _FIXED[c]
+    _FIXEXT = {0xD4: 1, 0xD5: 2, 0xD6: 4, 0xD7: 8, 0xD8: 16}
+    if c in _FIXEXT:
+        return pos + 1 + _FIXEXT[c]
+    if c == 0xD9:
+        return pos + 1 + buf[pos]
+    if c == 0xDA:
+        return pos + 2 + int.from_bytes(buf[pos:pos + 2], "big")
+    if c == 0xDB:
+        return pos + 4 + int.from_bytes(buf[pos:pos + 4], "big")
+    if c == 0xDC:
+        n = int.from_bytes(buf[pos:pos + 2], "big"); pos += 2
+        for _ in range(n):
+            pos = _skip_msgpack(buf, pos)
+        return pos
+    if c == 0xDD:
+        n = int.from_bytes(buf[pos:pos + 4], "big"); pos += 4
+        for _ in range(n):
+            pos = _skip_msgpack(buf, pos)
+        return pos
+    if c == 0xDE:
+        n = int.from_bytes(buf[pos:pos + 2], "big"); pos += 2
+        for _ in range(n * 2):
+            pos = _skip_msgpack(buf, pos)
+        return pos
+    if c == 0xDF:
+        n = int.from_bytes(buf[pos:pos + 4], "big"); pos += 4
+        for _ in range(n * 2):
+            pos = _skip_msgpack(buf, pos)
+        return pos
+    raise KKCardError(f"未知的 msgpack 类型字节 0x{c:02x}，无法做字节级写回")
+
+
+def _read_map_header(buf: bytes, pos: int) -> tuple[int, int]:
+    c = buf[pos]
+    if 0x80 <= c <= 0x8F:
+        return (c & 0x0F), pos + 1
+    if c == 0xDE:
+        return int.from_bytes(buf[pos + 1:pos + 3], "big"), pos + 3
+    if c == 0xDF:
+        return int.from_bytes(buf[pos + 1:pos + 5], "big"), pos + 5
+    raise KKCardError("目标块顶层不是 msgpack map，无法做字段级写回")
+
+
+def _encode_value_like(value, orig_first_byte: int) -> bytes:
+    # 浮点必须按 C# float 单精度(0xCA)写回，msgpack.packb 默认升 float64 会让游戏读不出
+    if isinstance(value, float):
+        if orig_first_byte == 0xCB:
+            return b"\xcb" + struct.pack(">d", value)
+        return b"\xca" + struct.pack(">f", value)
+    return msgpack.packb(value, use_bin_type=True)
+
+
+def patch_msgpack_map(raw: bytes, updates: dict) -> bytes:
+    """字段级修补顶层为 map 的 msgpack 块：仅改动字段重新编码，其余字节原样保留。"""
+    n, p = _read_map_header(raw, 0)
+    out = bytearray(raw[:p])
+    for _ in range(n):
+        k_start = p
+        p = _skip_msgpack(raw, p)
+        key_bytes = raw[k_start:p]
+        key = msgpack.unpackb(key_bytes, raw=False, strict_map_key=False)
+
+        v_start = p
+        p = _skip_msgpack(raw, p)
+        val_bytes = raw[v_start:p]
+
+        out += key_bytes
+        if key in updates:
+            new_val = updates[key]
+            old_val = msgpack.unpackb(val_bytes, raw=False, strict_map_key=False)
+            if new_val == old_val and type(new_val) is type(old_val):
+                out += val_bytes
+            else:
+                out += _encode_value_like(new_val, val_bytes[0])
+        else:
+            out += val_bytes
+    return bytes(out)
+
+
 def png_data_length(data: bytes, start: int = 0) -> int:
     """从 start 处开始解析一张 PNG，返回这张 PNG 的总字节长度（含签名到 IEND CRC）。
 
@@ -308,38 +429,40 @@ class KoikatuCard:
             raise KKCardError(f"块 {name} 解码失败：{last_exc or exc}") from (last_exc or exc)
 
     def set_block_dict(self, name: str, value: dict) -> None:
-        """把字典重新序列化并替换对应块（仅在内存中，save 时落盘）。"""
+        """整块重序列化替换（仅内存）。含浮点的块请改用 update_parameter，见下方拒绝逻辑。"""
         if name not in self.blocks:
             raise KKCardError(f"卡片中不存在块 {name}，拒绝写入未知块")
+        if _contains_float(value):
+            raise KKCardError(
+                f"块 {name} 含浮点字段，整块重打包会把 float32 升成 float64 损坏卡片；"
+                "请改用 update_parameter 做字段级写回"
+            )
         self.blocks[name] = msgpack.packb(value, use_bin_type=True)
         self._dirty = True
 
-    # 便捷属性：Parameter 块承载了绝大多数人类可读字段
     @property
     def parameter(self) -> dict | None:
         return self.get_block_dict("Parameter")
 
     def update_parameter(self, updates: dict) -> None:
-        """只更新 Parameter 中已存在的字段，未知字段忽略，避免破坏卡片。"""
-        param = self.get_block_dict("Parameter")
-        if param is None:
+        """字段级写回 Parameter：只改真正变化的字段，其余字节原样保留。"""
+        raw = self.blocks.get("Parameter")
+        if raw is None:
             raise KKCardError("该卡片没有 Parameter 块，无法编辑基本信息")
-        for key, val in updates.items():
-            if key in param:
-                param[key] = val
-        self.set_block_dict("Parameter", param)
-
-    # ---- 序列化 / 保存 ----
+        param = self.get_block_dict("Parameter") or {}
+        filtered = {k: v for k, v in updates.items() if k in param}
+        if not filtered:
+            return
+        new_raw = patch_msgpack_map(raw, filtered)
+        if new_raw != raw:
+            self.blocks["Parameter"] = new_raw
+            self._dirty = True
 
     def to_bytes(self) -> bytes:
         """重建整张卡片。
 
-        未编辑过任何块时（_dirty=False），数据区与块索引**原样字节吐回**，
-        保证读进来再存出去与原文件完全一致——这是"安全写回"的底线保证。
-        （缩略图/脸图等头部字段即便被换过，也只影响头部，尾部仍原样。）
-
-        编辑过块时，按**物理顺序**（原始 pos 升序）重排数据区，块索引保持原始
-        逻辑顺序、仅更新 pos/size。这样既能反映改动，又把布局扰动降到最低。
+        未编辑过（_dirty=False）时数据区与块索引原样字节吐回，保证读存一致。
+        编辑过则按物理顺序（pos 升序）重排数据区，块索引保持逻辑顺序仅更新 pos/size。
         """
         if not self._dirty:
             lstinfo_raw = self._lstinfo_raw
@@ -471,6 +594,108 @@ def extract_mod_ids(card: "KoikatuCard") -> dict[str, int]:
             if isinstance(mid, str) and mid:
                 out[mid] = out.get(mid, 0) + 1
     return out
+
+
+def _read_7bit_int_stream(f) -> int:
+    result = 0
+    shift = 0
+    while True:
+        b = f.read(1)
+        if not b:
+            raise KKCardError("流提前结束（读 7bit 整数）")
+        byte = b[0]
+        result |= (byte & 0x7F) << shift
+        if not (byte & 0x80):
+            return result
+        shift += 7
+        if shift > 35:
+            raise KKCardError("7bit 整数过长")
+
+
+def _read_cs_string_stream(f) -> str:
+    n = _read_7bit_int_stream(f)
+    return f.read(n).decode("utf-8", "replace")
+
+
+def _read_first_png_stream(f) -> bytes | None:
+    """从文件流读出开头那张完整 PNG（缩略图），读到 IEND 即停，不加载整文件。"""
+    sig = f.read(8)
+    if sig != PNG_SIGNATURE:
+        return None
+    buf = bytearray(sig)
+    while True:
+        hdr = f.read(8)
+        if len(hdr) < 8:
+            return None
+        buf += hdr
+        clen = struct.unpack(">I", hdr[:4])[0]
+        ctype = hdr[4:8]
+        body = f.read(clen + 4)
+        if len(body) < clen + 4:
+            return None
+        buf += body
+        if ctype == b"IEND":
+            return bytes(buf)
+
+
+@dataclass
+class LightInfo:
+    type: str          # character / coordinate / scene / other
+    game: str
+    marker: str
+    name: str
+    thumbnail: bytes
+
+
+def _light_read_name(f) -> str:
+    """流定位在 marker 之后时，跳过脸图、seek 到 Parameter 块读取角色名。"""
+    try:
+        _read_cs_string_stream(f)                       # version
+        face_len = struct.unpack("<i", f.read(4))[0]
+        if face_len < 0:
+            return ""
+        f.seek(face_len, io.SEEK_CUR)                    # 跳过脸图，不读
+        lst_len = struct.unpack("<i", f.read(4))[0]
+        lstinfo = msgpack.unpackb(f.read(lst_len), raw=False, strict_map_key=False)
+        f.read(8)                                        # dataLen(int64)
+        data_start = f.tell()
+        param = next((i for i in lstinfo.get("lstInfo", []) if i.get("name") == "Parameter"), None)
+        if not param:
+            return ""
+        f.seek(data_start + int(param["pos"]))
+        pd = msgpack.unpackb(f.read(int(param["size"])), raw=False, strict_map_key=False)
+        if isinstance(pd, dict):
+            return f"{pd.get('lastname','')}{pd.get('firstname','')}".strip() or pd.get("nickname", "")
+    except Exception:  # noqa: BLE001 - 取名失败不致命，返回空
+        return ""
+    return ""
+
+
+def read_card_light(path: str | Path) -> LightInfo:
+    """轻量读取一张卡：只取缩略图 + 类型 +（角色卡）名字。
+
+    专为浏览器批量扫描设计：只读开头那张 PNG，跳过脸图与 Custom/KKEx 等大块，
+    角色卡仅 seek 读 Parameter 取名。相比整文件读取+全量解析快一个数量级。
+    """
+    path = Path(path)
+    with open(path, "rb") as f:
+        thumb = _read_first_png_stream(f)
+        if thumb is None:
+            return LightInfo("other", "?", "", "", b"")
+        head = f.read(4)
+        if len(head) < 4:
+            return LightInfo("other", "?", "", "", thumb)  # 纯 PNG，无卡片尾部
+        try:
+            struct.unpack("<i", head)                       # productNo（值用不上）
+            marker = _read_cs_string_stream(f)
+        except (KKCardError, struct.error):
+            return LightInfo("scene", "?", "", "", thumb)
+        if marker in KNOWN_MARKERS:
+            return LightInfo("character", KNOWN_MARKERS[marker][0], marker, _light_read_name(f), thumb)
+        if marker in COORDINATE_MARKERS:
+            return LightInfo("coordinate", COORDINATE_MARKERS[marker][0], marker, "", thumb)
+        # 有尾部数据但 marker 不是已知卡片标识 —— 多为场景卡
+        return LightInfo("scene", "?", marker if marker.startswith("【") else "", "", thumb)
 
 
 def is_character_card(data: bytes) -> bool:
