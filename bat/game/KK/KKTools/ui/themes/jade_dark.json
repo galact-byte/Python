@@ -1,0 +1,25 @@
+{
+  "id": "jade_dark",
+  "name": "青玉·夜",
+  "variant": "dark",
+  "author": "KKTools",
+  "tokens": {
+    "bg": "#16191a",
+    "bg_deep": "#101213",
+    "surface": "#1e2224",
+    "surface_alt": "#262b2d",
+    "border": "#333a3b",
+    "border_soft": "#262b2c",
+    "text": "#e3e6e4",
+    "text_strong": "#f2f5f3",
+    "text_muted": "#9aa3a1",
+    "text_dim": "#8a938f",
+    "accent": "#46b894",
+    "selection": "#1f4a3e",
+    "primary": "#1f6e57",
+    "on_primary": "#f0faf6",
+    "danger": "#cf6a5a",
+    "success": "#46b894"
+  },
+  "shape": { "radius": 6, "radius_sm": 4, "radius_lg": 10 }
+}
