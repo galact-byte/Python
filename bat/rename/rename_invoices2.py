@@ -203,6 +203,7 @@ def rename_invoice_pdfs():
     success_count = 0
     failed_count = 0
     duplicate_count = 0
+    no_invoice_count = 0  # 新增：不是发票 / 没有20位发票号码的文件数量
 
     # 记录已发现的发票号码，用于检测重复（全局唯一）
     found_invoices = {}
@@ -214,8 +215,8 @@ def rename_invoice_pdfs():
         invoice_number = extract_invoice_number(pdf_file)
 
         if not invoice_number:
-            print(f"⚠️ 未找到20位发票号码: {pdf_file}")
-            failed_count += 1
+            print(f"⏭️ 跳过（非发票或无发票号码）: {pdf_file}")
+            no_invoice_count += 1
             continue
 
         print(f"📄 提取到发票号码: {invoice_number}")
@@ -258,6 +259,8 @@ def rename_invoice_pdfs():
     # 统计结果
     print("-" * 50)
     print(f"处理完成！成功: {success_count} 个，失败: {failed_count} 个")
+    if no_invoice_count > 0:
+        print(f"跳过（非发票/无发票号码）: {no_invoice_count} 个")
     if duplicate_count > 0:
         print(f"发现重复发票号码: {duplicate_count} 个（已添加后缀区分）")
 
