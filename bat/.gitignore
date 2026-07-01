@@ -9,3 +9,5 @@ tiqu.py
 generate_docs/False
 generate_docs/True
 game/Translation
+game/KK/*
+!game/KK/KKTools/
