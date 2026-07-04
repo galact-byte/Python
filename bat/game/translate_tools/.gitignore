@@ -1,0 +1,13 @@
+# 纯通用工具库:先排除全部,只放行跨游戏可复用的
+*
+
+!.gitignore
+!README.md
+
+# 通用工具(适配任意 RPG Maker MV/MZ 游戏)
+!translate_pngs.py
+!rpgmvp_tool.py
+!watermark_tool.py
+!scan_codekeys.py
+!qa_compare.py
+!qa_diff.py
