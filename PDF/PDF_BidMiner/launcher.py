@@ -53,27 +53,81 @@ def run_command(args, check=True):
 def current_python_ok() -> None:
     version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     ok(f"Python 已找到: {version}")
-    if sys.version_info < (3, 8):
-        fail("需要 Python 3.8 及以上版本")
+    if sys.version_info < (3, 10):
+        fail("需要 Python 3.10 及以上版本，推荐 Python 3.11 或 3.12")
         sys.exit(1)
 
 
+def venv_matches_current_python() -> bool:
+    if not VENV_PYTHON.exists():
+        return False
+    probe = (
+        "import json,sys; print(json.dumps({'version': list(sys.version_info[:2]), "
+        "'base': sys._base_executable, 'prefix': sys.prefix}))"
+    )
+    try:
+        result = subprocess.run(
+            [str(VENV_PYTHON), "-c", probe], capture_output=True,
+            text=True, encoding="utf-8", errors="replace", timeout=15,
+        )
+        if result.returncode != 0:
+            return False
+        data = json.loads(result.stdout)
+        base_python = Path(getattr(sys, "_base_executable", sys.executable)).resolve()
+        return (
+            data["version"] == list(sys.version_info[:2])
+            and Path(data["base"]).resolve() == base_python
+            and Path(data["prefix"]).resolve() == VENV_DIR.resolve()
+        )
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        return False
+
+
 def ensure_venv() -> None:
-    if VENV_PYTHON.exists():
-        ok("已检测到独立运行环境 .venv")
+    if venv_matches_current_python():
+        ok("独立运行环境 .venv 可用，与当前 Python 匹配")
         return
-    info("首次使用，正在创建独立运行环境...")
-    run_command([sys.executable, "-m", "venv", str(VENV_DIR)])
+    # .venv 是本机生成的缓存，不应复用从其他电脑复制来的解释器。
+    if VENV_DIR.is_symlink() or getattr(VENV_DIR, "is_junction", lambda: False)():
+        raise ValueError(".venv 指向其他目录，请先移除该链接，再重新运行")
+    args = [sys.executable, "-m", "venv"]
+    if VENV_DIR.exists():
+        warn("现有 .venv 已失效或不匹配，将用当前找到的 Python 重建")
+        args.append("--clear")
+    else:
+        info("首次使用，正在用当前找到的 Python 创建独立运行环境...")
+    run_command([*args, str(VENV_DIR)])
+    if not venv_matches_current_python():
+        raise RuntimeError("独立运行环境创建后仍无法启动，请检查当前 Python 安装")
     ok("独立运行环境已创建")
+
+
+def dependencies_available() -> bool:
+    try:
+        result = subprocess.run(
+            [str(VENV_PYTHON), "-c", "import fitz, dashscope, openpyxl, pip"],
+            capture_output=True, timeout=30,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def ensure_dependencies() -> None:
     ensure_venv()
-    info("正在检查并安装依赖包...")
-    run_command([str(VENV_PYTHON), "-m", "pip", "install", "--upgrade", "pip"], check=False)
-    run_command(
-        [str(VENV_PYTHON), "-m", "pip", "install", "-i", MIRROR_URL, *PACKAGES]
-    )
+    if dependencies_available():
+        ok("依赖检查通过")
+        return
+    info("依赖尚未就绪，正在安装...")
+    command = [str(VENV_PYTHON), "-m", "pip", "install", "-i", MIRROR_URL, *PACKAGES]
+    try:
+        run_command(command)
+        if not dependencies_available():
+            raise RuntimeError("依赖安装后仍无法导入")
+    except (subprocess.CalledProcessError, RuntimeError):
+        fail("依赖安装失败，请检查网络或执行以下手动安装命令：")
+        print(subprocess.list2cmdline(command))
+        raise
     ok("依赖安装完成")
 
 
@@ -148,6 +202,10 @@ def main() -> None:
     except subprocess.CalledProcessError:
         print()
         fail("执行失败，请把本窗口截图发给技术支持")
+        sys.exit(1)
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+        print()
+        fail(str(error))
         sys.exit(1)
     except KeyboardInterrupt:
         print()
