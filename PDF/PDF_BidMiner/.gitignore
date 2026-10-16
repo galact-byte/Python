@@ -3,3 +3,7 @@ output/
 pdfs/
 __pycache__/
 !prompt.txt
+!model_config.json
+.venv/
+*.pyc
+.pytest_cache/

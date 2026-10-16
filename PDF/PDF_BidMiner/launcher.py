@@ -13,7 +13,7 @@ VENV_DIR = ROOT_DIR / ".venv"
 VENV_PYTHON = VENV_DIR / "Scripts" / "python.exe"
 API_KEY_FILE = ROOT_DIR / "api_key.json"
 PDF_DIR = ROOT_DIR / "pdfs"
-PACKAGES = ["pymupdf", "dashscope", "openpyxl"]
+PACKAGES = ["pymupdf", "dashscope", "openpyxl", "requests"]
 MIRROR_URL = "https://mirrors.aliyun.com/pypi/simple/"
 
 
@@ -105,7 +105,7 @@ def ensure_venv() -> None:
 def dependencies_available() -> bool:
     try:
         result = subprocess.run(
-            [str(VENV_PYTHON), "-c", "import fitz, dashscope, openpyxl, pip"],
+            [str(VENV_PYTHON), "-c", "import fitz, dashscope, openpyxl, requests, pip"],
             capture_output=True, timeout=30,
         )
         return result.returncode == 0
@@ -201,7 +201,7 @@ def main() -> None:
             command_run()
     except subprocess.CalledProcessError:
         print()
-        fail("执行失败，请把本窗口截图发给技术支持")
+        fail("执行失败，请先按上方错误提示处理，操作步骤见 README.md；仍无法解决时再联系技术支持")
         sys.exit(1)
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
         print()

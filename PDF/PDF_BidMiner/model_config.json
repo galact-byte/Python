@@ -1,0 +1,7 @@
+{
+  "text_model": "qwen-flash",
+  "vision_model": "qwen3-vl-plus",
+  "text_fallbacks": ["qwen-plus"],
+  "vision_fallbacks": [],
+  "check_interval_days": 15
+}

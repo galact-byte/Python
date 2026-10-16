@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 BidMiner - 招标文件信息提取工具
-依赖: pymupdf dashscope openpyxl
+依赖: pymupdf dashscope openpyxl requests
 """
 
 import os
@@ -21,11 +21,13 @@ import dashscope
 from dashscope import Generation, MultiModalConversation
 from requests.exceptions import RequestException
 
+from model_config import DEFAULTS, configure_models
+
 # ──────────────────────────────────────────
 # 配置
 # ──────────────────────────────────────────
-TEXT_MODEL  = "qwen-turbo"
-VISION_MODEL = "qwen3-vl-plus"
+TEXT_MODEL  = DEFAULTS["text_model"]
+VISION_MODEL = DEFAULTS["vision_model"]
 IMAGE_DPI   = 300          # 图片型PDF渲染分辨率，越高越准但越慢
 MAX_RETRIES = 3             # API调用失败重试次数
 RETRY_DELAY = 5             # 重试等待秒数
@@ -168,7 +170,7 @@ def call_model(api, model: str, messages: list, label: str, **options) -> dict:
 def call_text_model(prompt: str, content: str) -> dict:
     """调用文本模型提取信息"""
     messages = [{"role": "user", "content": prompt + "\n\n" + content}]
-    return call_model(Generation, TEXT_MODEL, messages, "文本模型")
+    return call_model(Generation, TEXT_MODEL, messages, "文本模型", enable_thinking=False)
 
 
 def call_vision_model(prompt: str, images_b64: list) -> dict:
@@ -531,6 +533,19 @@ if __name__ == "__main__":
 
     api_key = load_api_key(str(api_key_file))
     prompt  = load_prompt(str(prompt_file))
+    try:
+        model_settings = configure_models(base_dir / "model_config.json", base_dir / ".model_check.json")
+    except (OSError, ValueError) as error:
+        raise SystemExit(
+            f"模型配置读取失败：{error}\n"
+            f"请右键此文件 → 打开方式 → 记事本：{base_dir / 'model_config.json'}\n"
+            "检查型号是否为空、英文双引号、逗号及首尾大括号是否完整，勿使用中文引号。\n"
+            "具体示例及型号填写要求见 README.md 的“自行更换模型”一节；\n"
+            "修正后按 Ctrl+S 保存，再重新双击 run.bat。若提示文件访问被拒绝，请检查文件权限。"
+        ) from None
+    TEXT_MODEL = model_settings["text_model"]
+    VISION_MODEL = model_settings["vision_model"]
+    print(f"文本模型: {TEXT_MODEL} | 视觉模型: {VISION_MODEL}")
 
     success, failed = process_pdfs(str(pdf_dir), str(output_excel), api_key, prompt)
 
