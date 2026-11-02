@@ -524,7 +524,7 @@ def process_image(image_filename, api_url, model, prompt, image_directory, outpu
             if api_key is None:
                 api_key = get_next_api_key()  # 获取下一个 API_KEY
             print("开始请求")
-            response = requests.post(api_url, headers=get_headers(api_key), data=json.dumps(data),verify=False)
+            response = requests.post(api_url, headers=get_headers(api_key), data=json.dumps(data))
             print("请求成功")
             if response.status_code == 200:
                 result = response.json()

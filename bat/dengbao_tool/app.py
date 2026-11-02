@@ -302,11 +302,7 @@ def preview():
             out = os.path.join(temp_dir, f"预览_{prefix}-备案表_{preview_token}.docx")
             generate_beian(paths["beian_template"], out, data, highlighted_fields=highlighted)
         else:
-<<<<<<< HEAD
             out = os.path.join(temp_dir, f"预览_{prefix}-定级报告_{preview_token}.docx")
-            generate_report(paths["report_template"], out, report, name, highlighted_fields=highlighted)
-=======
-            out = os.path.join(temp_dir, f"预览_定级报告_{name}_{preview_token}.docx")
             generate_report(
                 paths["report_template"],
                 out,
@@ -315,7 +311,6 @@ def preview():
                 highlighted_fields=highlighted,
                 report_highlights=report_highlights,
             )
->>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
 
         os.startfile(out)
         return jsonify({"success": True, "path": out})
@@ -564,11 +559,7 @@ def _generate_documents(paths, form_data, report_data):
     beian_out = os.path.join(out_dir, f"{prefix}-备案表.docx")
     generate_beian(paths["beian_template"], beian_out, data, highlighted_fields=highlighted)
 
-<<<<<<< HEAD
     report_out = os.path.join(out_dir, f"{prefix}-定级报告.docx")
-    generate_report(paths["report_template"], report_out, report, name, highlighted_fields=highlighted)
-=======
-    report_out = os.path.join(out_dir, f"定级报告_{name}.docx")
     generate_report(
         paths["report_template"],
         report_out,
@@ -577,7 +568,6 @@ def _generate_documents(paths, form_data, report_data):
         highlighted_fields=highlighted,
         report_highlights=report_highlights,
     )
->>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
 
     return {
         "files": [beian_out, report_out],

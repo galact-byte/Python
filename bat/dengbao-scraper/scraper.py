@@ -249,7 +249,6 @@ def create_session(pfx_path, pfx_password=None, cookie=None):
     cert_path, key_path = setup_client_cert(pfx_path, pfx_password)
 
     session = requests.Session()
-    session.verify = False
     session.cert = (cert_path, key_path)
     session.headers.update({
         "User-Agent": (

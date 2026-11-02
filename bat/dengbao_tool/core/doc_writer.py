@@ -16,7 +16,10 @@ from core.format_style import (
 )
 
 
-<<<<<<< HEAD
+FONT_REPORT_TITLE = "方正小标宋简体"
+SIZE_REPORT_TITLE = Pt(22)
+SIZE_REPORT_BODY = Pt(14)
+
 # 生成态：备案表强制五号(10.5pt)；定级报告保留模板字号
 _FILL_FORCE_SIZE = None
 
@@ -28,11 +31,6 @@ def _set_fill_mode(mode):
         _FILL_FORCE_SIZE = Pt(10.5)
     else:
         _FILL_FORCE_SIZE = None
-=======
-FONT_REPORT_TITLE = "方正小标宋简体"
-SIZE_REPORT_TITLE = Pt(22)
-SIZE_REPORT_BODY = Pt(14)
->>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
 
 
 # ══════════════════════════════════════════════════════
@@ -818,16 +816,11 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
     if tgt.service_scope:
         code = tgt.service_scope.split('-')[0] if '-' in tgt.service_scope else tgt.service_scope
         _find_and_check(t3.rows[4].cells[2], code)
-<<<<<<< HEAD
-        if code == '99' and tgt.service_scope_other:
-            _fill_other_option(t3.rows[4].cells[2], '其它', tgt.service_scope_other)
-        else:
-            _clear_other_residue(t3.rows[4].cells[2])
-=======
         service_scope_other = tgt.service_scope_other or ('本单位' if code == '99' else '')
         if code == '99' and service_scope_other:
             _fill_other_option(t3.rows[4].cells[2], '其它', service_scope_other)
->>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
+        else:
+            _clear_other_residue(t3.rows[4].cells[2])
 
     # 服务对象（勾选）
     if tgt.service_target:
@@ -1339,42 +1332,28 @@ def generate_report(template_path: str, output_path: str,
     """基于新定级报告模版生成填充后的定级报告"""
     if highlighted_fields is None:
         highlighted_fields = []
-<<<<<<< HEAD
     _set_fill_mode('report')
-=======
     if report_highlights is None:
         report_highlights = {}
     system_name = (report.system_name or project_name or "").strip()
->>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
     shutil.copy2(template_path, output_path)
     doc = Document(output_path)
 
     # ── 第一遍：替换文本、删除说明 ──
     paragraphs_to_remove = []
-<<<<<<< HEAD
-
-    # 章节标题 → 该章节正文应替换的字段值
+    # 章节标题 → 正文、标黄字段与分段策略；覆盖模板已有的完整示例正文。
     section_title_to_value = {
-        "（一）责任主体": report.responsibility,
-        "（二）定级对象构成": report.composition,
-        "（三）承载业务": report.business_desc,
-        "（四）承载数据": report.carried_data,
-        "（五）安全责任": report.security_resp,
-        "1、业务信息描述": report.biz_info_desc,
-        "2、业务信息受到破坏时所侵害客体的确定": report.biz_victim,
-        "3、业务信息受到破坏时对侵害客体的侵害程度的确定": report.biz_degree,
-        "1、系统服务描述": report.svc_desc,
-        "2、系统服务受到破坏时所侵害客体的确定": report.svc_victim,
-        "3、系统服务受到破坏时对侵害客体的侵害程度的确定": report.svc_degree,
-=======
-    section_body_map = {
+        "（一）责任主体": (report.responsibility, "rpt_responsibility", False),
+        "（二）定级对象构成": (report.composition, "rpt_composition", True),
+        "（三）承载业务": (report.business_desc, "rpt_business", False),
+        "（四）承载数据": (report.carried_data, "rpt_carried_data", False),
+        "（五）安全责任": (report.security_resp, "rpt_security", False),
         "1、业务信息描述": (report.biz_info_desc, "rpt_biz_info", False),
         "2、业务信息受到破坏时所侵害客体的确定": (report.biz_victim, "rpt_biz_victim", False),
         "3、业务信息受到破坏时对侵害客体的侵害程度的确定": (report.biz_degree, "rpt_biz_degree", False),
         "1、系统服务描述": (report.svc_desc, "rpt_svc_desc", False),
         "2、系统服务受到破坏时所侵害客体的确定": (report.svc_victim, "rpt_svc_victim", False),
         "3、系统服务受到破坏时对侵害客体的侵害程度的确定": (report.svc_degree, "rpt_svc_degree", False),
->>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
     }
 
     # 按段落顺序划分章节正文（标题段之后、下一个标题之前的所有非空段为该节正文）
@@ -1417,37 +1396,27 @@ def generate_report(template_path: str, output_path: str,
     if current_value is not None:
         sections_to_apply.append((current_value, current_body_paras))
 
-<<<<<<< HEAD
-    # 应用替换：每节首段替换为新值，其余段标记删除
-    for value, body_paras in sections_to_apply:
+    # 应用替换：每节首段替换为新值，其余段标记删除。
+    for (value, field_id, split_lines), body_paras in sections_to_apply:
         if not body_paras:
             continue
         if value:
-            _replace_paragraph_text(body_paras[0], value)
+            _replace_body_paragraphs(
+                body_paras[0], value, split_lines=split_lines,
+                highlight_snippets=report_highlights.get(field_id, []),
+            )
             for extra in body_paras[1:]:
                 paragraphs_to_remove.append(extra)
         else:
             for extra in body_paras:
                 paragraphs_to_remove.append(extra)
 
-    # 标题替换、删除"【填写说明】"、子系统表占位、第X级等
+    # 标题替换、删除"【填写说明】"、子系统表占位、第X级等。
     for p in paragraphs_all:
+        if p in paragraphs_to_remove:
+            continue
         text = p.text.strip()
         if not text:
-=======
-        if pending_section and text.startswith("【"):
-            replacement, field_id, split_lines = section_body_map.get(pending_section, ("", "", False))
-            if replacement:
-                _replace_body_paragraphs(
-                    p,
-                    replacement,
-                    split_lines=split_lines,
-                    highlight_snippets=report_highlights.get(field_id, []),
-                )
-            else:
-                paragraphs_to_remove.append(p)
-            pending_section = ""
->>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
             continue
 
         # 替换标题（XX → 项目名），保持格式一致
@@ -1469,43 +1438,6 @@ def generate_report(template_path: str, output_path: str,
             paragraphs_to_remove.append(p)
             continue
 
-<<<<<<< HEAD
-=======
-        # 替换参考示例内容
-        if "定级对象于XX年" in text and report.responsibility:
-            _replace_body_paragraphs(
-                p,
-                report.responsibility,
-                split_lines=False,
-                highlight_snippets=report_highlights.get("rpt_responsibility", []),
-            )
-            continue
-        elif "网络中部署了XXX防火墙" in text and report.composition:
-            _replace_body_paragraphs(
-                p,
-                report.composition,
-                split_lines=True,
-                highlight_snippets=report_highlights.get("rpt_composition", []),
-            )
-            continue
-        elif "该定级对象承载着综合办公业务" in text and report.business_desc:
-            _replace_body_paragraphs(
-                p,
-                report.business_desc,
-                split_lines=False,
-                highlight_snippets=report_highlights.get("rpt_business", []),
-            )
-            continue
-        elif "按照网络安全法" in text and report.security_resp:
-            _replace_body_paragraphs(
-                p,
-                report.security_resp,
-                split_lines=False,
-                highlight_snippets=report_highlights.get("rpt_security", []),
-            )
-            continue
-
->>>>>>> abbe1ee3b89a69f778cf4d76563b8d6501679cae
         # 替换子系统表描述
         if "该定级对象包括以下子系统" in text:
             if not report.subsystems:

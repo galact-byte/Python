@@ -29,10 +29,13 @@ import hashlib
 import json
 import os
 import re
+import ssl
 import sys
 import time
 from pathlib import Path
 from urllib import request, error
+
+import certifi
 
 
 # ── 颜色输出 ───────────────────────────────────────────────
@@ -46,9 +49,10 @@ def bold(s):   return f"\033[1m{s}\033[0m"
 # ── HTTP 工具 ──────────────────────────────────────────────
 def http_get(url, headers, retries=3):
     req = request.Request(url, headers=headers)
+    context = ssl.create_default_context(cafile=certifi.where())
     for attempt in range(retries):
         try:
-            with request.urlopen(req, timeout=30) as r:
+            with request.urlopen(req, timeout=30, context=context) as r:
                 return json.loads(r.read()), dict(r.headers)
         except error.HTTPError as e:
             if e.code in (429, 403) and attempt < retries - 1:
