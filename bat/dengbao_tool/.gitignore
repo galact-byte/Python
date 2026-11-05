@@ -25,3 +25,6 @@ Thumbs.db
 CLAUDE.md
 GEMINI.md
 AGENTS.md
+
+# 浏览器验证产生的本地日志
+.playwright-mcp/

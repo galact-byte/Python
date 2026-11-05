@@ -516,7 +516,7 @@ function applySystemSnapshot(project, system) {
       applyHighlightedFields(system.form_data.highlighted_fields || []);
     }
     if (system.report_data) {
-      fillReportData(system.report_data);
+      fillReportData(system.report_data, {preserveGrading: !!system.form_data});
     }
   }
 
@@ -752,6 +752,7 @@ function applyUiState(state) {
     if (!(id in state)) {
       return;
     }
+    delete el.dataset.countAuto;
     if (el.type === 'checkbox') {
       el.checked = !!state[id];
     } else {

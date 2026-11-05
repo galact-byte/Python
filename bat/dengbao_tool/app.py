@@ -286,7 +286,7 @@ def preview():
 
     try:
         data = _dict_to_project_data(form_data)
-        report = _dict_to_report(report_data)
+        report = _dict_to_report(report_data, data.grading)
         name = _resolve_document_name(paths, form_data, report_data)
         highlighted = form_data.get("highlighted_fields", [])
         report_highlights = report_data.get("highlighted_fragments", {})
@@ -544,7 +544,7 @@ def _load_source_payload(old_beian, old_report):
 def _generate_documents(paths, form_data, report_data):
     """按当前表单生成正式文档。"""
     data = _dict_to_project_data(form_data)
-    report = _dict_to_report(report_data)
+    report = _dict_to_report(report_data, data.grading)
     name = _resolve_document_name(paths, form_data, report_data)
     highlighted = form_data.get("highlighted_fields", [])
     report_highlights = report_data.get("highlighted_fragments", {})
@@ -818,7 +818,7 @@ def _dict_to_project_data(d):
     return data
 
 
-def _dict_to_report(d):
+def _dict_to_report(d, grading=None):
     """从 dict 重建 ReportInfo"""
     from models.project_data import ReportInfo, SubSystem
     r = ReportInfo()
@@ -828,6 +828,15 @@ def _dict_to_report(d):
                  "biz_degree", "biz_level", "svc_desc", "svc_victim",
                  "svc_degree", "svc_level", "final_level"]:
         setattr(r, key, d.get(key, ""))
+    if grading is not None:
+        r.biz_level, r.svc_level, r.final_level = grading.biz_level, grading.service_level, grading.final_level
+        r.biz_level_items = list(grading.biz_level_items or [])
+        r.svc_level_items = list(grading.service_level_items or [])
+        r.signature_date = grading.fill_date
+    else:
+        r.biz_level_items = list(d.get('biz_level_items') or [])
+        r.svc_level_items = list(d.get('svc_level_items') or [])
+        r.signature_date = d.get('signature_date', '')
     for s in d.get("subsystems", []):
         r.subsystems.append(SubSystem(
             index=s.get("index", ""), name=s.get("name", ""),

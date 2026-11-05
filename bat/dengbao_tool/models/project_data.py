@@ -251,6 +251,9 @@ class ReportInfo:
     svc_degree: str = ""               # 侵害程度
     svc_level: str = "第二级"
     final_level: str = "第二级"
+    signature_date: str = ""           # 签章日期，与本次填表日期一致
+    biz_level_items: list = field(default_factory=list)
+    svc_level_items: list = field(default_factory=list)
 
 
 @dataclass

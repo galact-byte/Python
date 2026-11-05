@@ -276,7 +276,14 @@ def _parse_survey_cloud_info(doc: Document):
         report_code = next((item for item in lines if "报告编号" in item or "备案编号" in item), "")
 
     cloud_info["platform_name"] = platform_name
-    cloud_info["platform_level"] = "三级" if platform_name else ""
+    level_text = next((value for key, value in lookup_map.items()
+                       if '等级' in key and ('平台' in key or '云' in key)), '')
+    if not level_text:
+        level_text = next((line for line in lines
+                           if '等级' in line and ('平台' in line or '云' in line)), '')
+    match = re.search(r'第?([一二三四五1-5])级', level_text)
+    level_names = dict(zip('12345', '一二三四五'))
+    cloud_info['platform_level'] = (level_names.get(match[1], match[1]) + '级') if match else ''
     cloud_info["platform_code"] = _extract_report_code(report_code)
     cloud_info["provider_name"] = _extract_cloud_provider_name(platform_name, joined)
     cloud_info["role"] = _infer_cloud_role(shape_text, joined)
@@ -460,11 +467,25 @@ def _read_beian_new(doc) -> ProjectData:
         g = data.grading
         if len(t4.rows) > 18:
             # 安全等级勾选
+            g.biz_level = g.service_level = g.final_level = ''
             level = _read_first_checked(t4.rows[11].cells[2])
             if level:
                 g.final_level = level
                 g.biz_level = level
                 g.service_level = level
+
+            for level_attr, items_attr, start in [('biz_level', 'biz_level_items', 1),
+                                                   ('service_level', 'service_level_items', 6)]:
+                items = []
+                for offset, name in enumerate(['第一级', '第二级', '第三级', '第四级', '第五级']):
+                    row = t4.rows[start + offset]
+                    if _read_first_checked(row.cells[4]):
+                        setattr(g, level_attr, name)
+                    for paragraph in row.cells[1].paragraphs:
+                        checked = paragraph._p.xpath('.//w:sym/@w:char')
+                        if any(value in ('F0FE', '00FE') for value in checked):
+                            items.append(paragraph.text.strip())
+                setattr(g, items_attr, items)
 
             g.grading_date = _cell_text(t4, 12, 2)
 

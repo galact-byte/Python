@@ -137,15 +137,25 @@ body {
   gap: 10px;
 }
 .form-row.compact-wrap {
+  position: relative;
   flex-wrap: wrap;
   align-items: flex-start;
+  padding-left: 120px;
+}
+.form-row.compact-wrap > label {
+  position: absolute;
+  left: 0;
+  top: 6px;
 }
 .form-row.compact-wrap > select {
-  min-width: 160px;
-  flex: 0 0 160px;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 160px;
 }
 .form-row.compact-wrap > input[type="text"] {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 .form-row label {
   width: 110px;
@@ -329,36 +339,43 @@ input[type="checkbox"] {
   flex: 1;
   width: 100%;
 }
-.level-checks {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  flex: 1;
+.level-result[readonly] {
+  flex: 0 1 180px;
+  color: var(--primary);
+  background: var(--panel-muted);
+  font-weight: 600;
 }
-.level-checks label {
-  width: auto;
-  min-height: 54px;
+.level-final { color: var(--primary); font-size: 16px; font-weight: 600; }
+.level-final:empty::before { content: '未选择损害项'; color: var(--text-sec); font-size: 13px; font-weight: 400; }
+.level-checks { min-width: 0; margin-bottom: 20px; }
+.level-matrix { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.level-matrix th, .level-matrix td {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  vertical-align: middle;
+}
+.level-matrix tr > :first-child { border-left: 1px solid var(--border); width: 34%; }
+.level-matrix thead th { border-top: 1px solid var(--border); padding: 8px 6px; color: var(--text-sec); background: var(--panel-muted); font-weight: 400; }
+.level-matrix tbody th { padding: 10px; text-align: left; font-weight: 400; line-height: 1.5; }
+.level-matrix thead th:first-child { border-top-left-radius: var(--radius); }
+.level-matrix thead th:last-child { border-top-right-radius: var(--radius); }
+.level-matrix tbody tr:last-child th { border-bottom-left-radius: var(--radius); }
+.level-matrix tbody tr:last-child td:last-child { border-bottom-right-radius: var(--radius); }
+.level-matrix label {
+  min-height: 48px;
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  text-align: left;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--panel-muted) 92%, transparent);
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 4px;
   color: var(--text);
-  line-height: 1.45;
   cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
-.level-checks label:hover {
-  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
-  background: color-mix(in srgb, var(--primary) 8%, var(--panel-muted));
-}
-.level-checks input[type="checkbox"] {
-  margin-top: 2px;
-  flex-shrink: 0;
-}
+.level-matrix label:hover, .level-matrix label:has(input:checked) { background: var(--field-auto); }
+.level-matrix label:has(input:checked) { color: var(--primary); }
+.level-matrix input:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+
 
 /* ── 行内分组 ── */
 .inline-group {
@@ -803,9 +820,12 @@ input[type="checkbox"] {
     width: auto;
     text-align: left;
   }
-  .level-checks {
-    grid-template-columns: 1fr;
-  }
+  .form-row.compact-wrap { padding-left: 0; }
+  .form-row.compact-wrap > label { position: static; }
+  .level-result[readonly] { flex-basis: auto; }
+  .level-matrix { font-size: 12px; }
+  .level-matrix label { flex-direction: column; gap: 4px; }
+  .level-matrix tbody th { padding: 8px 6px; }
   .data-amount-group {
     width: 100%;
     gap: 8px;

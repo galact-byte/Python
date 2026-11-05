@@ -31,7 +31,8 @@ class StartupRegressionTests(unittest.TestCase):
             },
             'form_data': {
                 'unit': {'unit_name': '测试单位'},
-                'target': {'name': '测试系统', 'service_scope': '99-其它'},
+                'target': {'name': '测试系统', 'service_scope': '99-其它',
+                           'service_scope_other': '本单位'},
             },
             'report_data': {
                 'system_name': '测试系统',

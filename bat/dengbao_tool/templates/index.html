@@ -240,25 +240,26 @@
 
           <div class="form-group">
             <div class="form-group-title">定级对象数量</div>
+            <p class="hint" id="object-counts-hint">填写各等级数量后，自动汇总并将本行其余空项补 0；整行未填时保持空白。</p>
             <div class="form-row">
               <label>本次备案：</label>
-              <div class="inline-group">
-                <label>总数</label><input type="text" id="cur_total" value="1">
-                <label>二级</label><input type="text" id="cur_l2" value="1">
-                <label>三级</label><input type="text" id="cur_l3" value="0">
-                <label>四级</label><input type="text" id="cur_l4" value="0">
-                <label>五级</label><input type="text" id="cur_l5" value="0">
+              <div class="inline-group" data-object-counts aria-describedby="object-counts-hint">
+                <label for="cur_total">总数</label><input type="text" inputmode="numeric" id="cur_total" aria-label="本次备案总数">
+                <label for="cur_l2">二级</label><input type="text" inputmode="numeric" id="cur_l2" aria-label="本次备案二级数量">
+                <label for="cur_l3">三级</label><input type="text" inputmode="numeric" id="cur_l3" aria-label="本次备案三级数量">
+                <label for="cur_l4">四级</label><input type="text" inputmode="numeric" id="cur_l4" aria-label="本次备案四级数量">
+                <label for="cur_l5">五级</label><input type="text" inputmode="numeric" id="cur_l5" aria-label="本次备案五级数量">
               </div>
             </div>
             <div class="form-row">
               <label>总数(含本次)：</label>
-              <div class="inline-group">
-                <label>总数</label><input type="text" id="all_total" value="1">
-                <label>一级</label><input type="text" id="all_l1" value="0">
-                <label>二级</label><input type="text" id="all_l2" value="1">
-                <label>三级</label><input type="text" id="all_l3" value="0">
-                <label>四级</label><input type="text" id="all_l4" value="0">
-                <label>五级</label><input type="text" id="all_l5" value="0">
+              <div class="inline-group" data-object-counts aria-describedby="object-counts-hint">
+                <label for="all_total">总数</label><input type="text" inputmode="numeric" id="all_total" aria-label="累计总数">
+                <label for="all_l1">一级</label><input type="text" inputmode="numeric" id="all_l1" aria-label="累计一级数量">
+                <label for="all_l2">二级</label><input type="text" inputmode="numeric" id="all_l2" aria-label="累计二级数量">
+                <label for="all_l3">三级</label><input type="text" inputmode="numeric" id="all_l3" aria-label="累计三级数量">
+                <label for="all_l4">四级</label><input type="text" inputmode="numeric" id="all_l4" aria-label="累计四级数量">
+                <label for="all_l5">五级</label><input type="text" inputmode="numeric" id="all_l5" aria-label="累计五级数量">
               </div>
             </div>
           </div>
@@ -290,7 +291,7 @@
             <div class="form-row"><label>服务范围：</label><select id="svc_scope" onchange="toggleOtherInput(this,'svc_scope_other')"><option value="">请选择</option><option>30-地(市、区)内</option><option>20-全省(区、市)</option><option>10-全国</option><option>99-其他</option></select><input type="text" id="svc_scope_other" placeholder="请填写具体服务范围" style="display:none;width:200px;"></div>
             <div class="form-row"><label>服务对象：</label><select id="svc_target" onchange="toggleOtherInput(this,'svc_target_other')"><option value="">请选择</option><option>1-单位内部人员</option><option>2-社会公众人员</option><option>3-两者均包括</option><option>9-其他</option></select><input type="text" id="svc_target_other" placeholder="请填写具体服务对象" style="display:none;width:200px;"></div>
             <div class="form-row"><label>部署范围：</label><select id="deploy_scope" onchange="toggleOtherInput(this,'deploy_scope_other')"><option value="">请选择</option><option>1-局域网</option><option>2-城域网</option><option>3-广域网</option><option>9-其他</option></select><input type="text" id="deploy_scope_other" placeholder="请填写具体部署范围" style="display:none;width:220px;"></div>
-            <div class="form-row compact-wrap"><label>网络性质：</label><select id="net_type" onchange="onNetworkTypeChange()"><option value="">请选择</option><option>1-业务专网</option><option>2-互联网</option><option>9-其他</option></select><input type="text" id="net_type_other" placeholder="请填写具体网络性质" style="display:none;width:220px;"><input type="text" id="source_ip" placeholder="源站IP地址范围" style="display:none;width:200px;"><input type="text" id="domain" placeholder="域名" style="display:none;width:160px;"><input type="text" id="protocol_port" placeholder="主要协议/端口" style="display:none;width:180px;"></div>
+            <div class="form-row compact-wrap"><label for="net_type">网络性质：</label><select id="net_type" onchange="onNetworkTypeChange()"><option value="">请选择</option><option>1-业务专网</option><option>2-互联网</option><option>9-其他</option></select><input type="text" id="net_type_other" placeholder="请填写具体网络性质" style="display:none;width:220px;"><input type="text" id="source_ip" placeholder="源站IP地址范围" style="display:none;width:200px;"><input type="text" id="domain" placeholder="域名" style="display:none;width:160px;"><input type="text" id="protocol_port" placeholder="主要协议/端口" style="display:none;width:180px;"></div>
             <div class="form-row"><label>互联情况：</label><select id="interconnect" onchange="toggleOtherInput(this,'interconnect_other')"><option value="">请选择</option><option>1-与其他行业系统连接</option><option>2-与本行业其他单位系统连接</option><option>3-与本单位其他系统连接</option><option>9-其他</option></select><input type="text" id="interconnect_other" placeholder="请填写具体互联情况" style="display:none;width:220px;"></div>
             <div class="form-row"><label>运行时间：</label><div class="date-field"><input type="date" id="run_date" data-field="target.run_date"><button type="button" class="date-trigger" onclick="openDatePicker('run_date')" aria-label="选择运行时间"></button></div></div>
           </div>
@@ -306,11 +307,12 @@
         <div class="tab-panel" id="tab-2">
           <div class="form-group">
             <div class="form-group-title">安全保护等级</div>
-            <div class="form-row"><label>业务信息等级：</label><select id="biz_level" onchange="onLevelFieldChange('biz')"><option>第一级</option><option selected>第二级</option><option>第三级</option><option>第四级</option><option>第五级</option></select></div>
-            <div class="form-row"><label>业务信息勾选：</label><div id="biz_level_checks" class="checkbox-row checkbox-wrap level-checks"></div></div>
-            <div class="form-row"><label>系统服务等级：</label><select id="svc_level" onchange="onLevelFieldChange('svc')"><option>第一级</option><option selected>第二级</option><option>第三级</option><option>第四级</option><option>第五级</option></select></div>
-            <div class="form-row"><label>系统服务勾选：</label><div id="svc_level_checks" class="checkbox-row checkbox-wrap level-checks"></div></div>
-            <div class="form-row"><label>最终等级：</label><span id="final_level" style="color:var(--primary);font-size:16px;font-weight:bold;">第二级</span></div>
+            <p class="hint">可同时勾选多个损害项，各项等级取所选最高值；未勾选时留空。</p>
+            <div class="form-row"><label for="biz_level">业务信息等级：</label><input type="text" id="biz_level" class="level-result" readonly placeholder="未选择损害项"></div>
+            <div id="biz_level_checks" class="level-checks" role="group" aria-label="业务信息损害项"></div>
+            <div class="form-row"><label for="svc_level">系统服务等级：</label><input type="text" id="svc_level" class="level-result" readonly placeholder="未选择损害项"></div>
+            <div id="svc_level_checks" class="level-checks" role="group" aria-label="系统服务损害项"></div>
+            <div class="form-row"><label>最终等级：</label><span id="final_level" class="level-final" aria-live="polite"></span></div>
           </div>
           <div class="form-group">
             <div class="form-group-title">定级信息</div>
@@ -320,7 +322,7 @@
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="has_review" checked><label for="has_review">已专家评审</label></div></div>
             <div class="form-row"><label>评审附件名：</label><input type="text" id="review_name"></div>
             <div class="form-row"><label></label><div class="checkbox-row"><input type="checkbox" id="has_supervisor" onchange="onSupervisorChange()"><label for="has_supervisor">有上级行业主管部门</label></div></div>
-            <div class="form-row"><label>主管部门：</label><input type="text" id="supervisor_name" value="/"></div>
+            <div class="form-row"><label>主管部门：</label><input type="text" id="supervisor_name"></div>
             <div class="form-row" id="supervisor_review_row"><label>审核情况：</label><select id="supervisor_review_status" onchange="onSupervisorReviewStatusChange()"><option value="未审核">未审核</option><option value="已审核">已审核</option></select></div>
             <div class="form-row" id="supervisor_doc_row" style="display:none;"><label>审核附件名：</label><input type="text" id="supervisor_doc"></div>
             <hr style="border-color:var(--border);margin:12px 0;">
@@ -795,7 +797,7 @@ async function loadOldData() {
     }
 
     if (result.beian_data) fillBeianData(result.beian_data);
-    if (result.report_data) fillReportData(result.report_data);
+    if (result.report_data) fillReportData(result.report_data, {preserveGrading: !!result.beian_data});
 
     // 加载调查表拓扑图
     const surveyPath = document.getElementById('survey').value.trim();
@@ -955,8 +957,6 @@ function fillBeianData(d) {
   setField('supervisor_doc', g.supervisor_doc);
   onSupervisorChange();
   onSupervisorReviewStatusChange();
-  if (g.biz_level) { document.getElementById('biz_level').value = g.biz_level; }
-  if (g.service_level) { document.getElementById('svc_level').value = g.service_level; }
   renderLevelCheckOptions('biz', g.biz_level_items || []);
   renderLevelCheckOptions('svc', g.service_level_items || []);
   updateFinalLevel();
@@ -1053,7 +1053,7 @@ function fillBeianData(d) {
   onStorageTypeChange();
 }
 
-function fillReportData(r) {
+function fillReportData(r, {preserveGrading = false} = {}) {
   resetReportHighlightedFragments();
   setField('rpt_responsibility', r.responsibility);
   setField('rpt_composition', r.composition);
@@ -1067,17 +1067,23 @@ function fillReportData(r) {
   setField('rpt_svc_desc', r.svc_desc);
   setField('rpt_svc_victim', r.svc_victim);
   setField('rpt_svc_degree', r.svc_degree);
-  if (r.biz_level) document.getElementById('biz_level').value = r.biz_level;
-  if (r.svc_level) document.getElementById('svc_level').value = r.svc_level;
-  renderLevelCheckOptions('biz');
-  renderLevelCheckOptions('svc');
+  if (!preserveGrading) {
+    renderLevelCheckOptions('biz', r.biz_level_items || []);
+    renderLevelCheckOptions('svc', r.svc_level_items || []);
+  }
   updateFinalLevel();
 }
 
 function setField(id, value) {
-  if (!value || !value.toString().trim()) return;
   const el = document.getElementById(id);
   if (!el) return;
+  if (el.closest('[data-object-counts]')) {
+    delete el.dataset.countAuto;
+    el.value = '';
+    el.classList.remove('auto-filled', 'modified');
+    value = value == null ? '' : String(value);
+  }
+  if (!value || !value.toString().trim()) return;
   const v = value.toString().trim();
   if (el.tagName === 'TEXTAREA') el.value = v;
   else el.value = v;
@@ -1257,7 +1263,7 @@ function applySurveyCloudInfo(cloudInfo = {}) {
   fillFieldIfEmpty('cloud_provider_kind', 'cloud_vendor');
   fillFieldIfEmpty('cloud_provider', cloudInfo.provider_name);
   fillFieldIfEmpty('cloud_provider_client', cloudInfo.provider_name);
-  fillFieldIfEmpty('cloud_plat_level', cloudInfo.platform_level || '三级');
+  fillFieldIfEmpty('cloud_plat_level', cloudInfo.platform_level);
   fillFieldIfEmpty('cloud_plat_name', cloudInfo.platform_name);
   if ((cloudInfo.platform_code || '').toString().trim()) {
     const codeEl = document.getElementById('cloud_plat_code');
@@ -1268,21 +1274,18 @@ function applySurveyCloudInfo(cloudInfo = {}) {
 }
 
 function renderLevelCheckOptions(kind, selectedItems = []) {
-  const levelId = kind === 'biz' ? 'biz_level' : 'svc_level';
-  const containerId = kind === 'biz' ? 'biz_level_checks' : 'svc_level_checks';
-  const level = document.getElementById(levelId).value;
-  const container = document.getElementById(containerId);
-  const options = LEVEL_IMPACT_OPTIONS[level] || [];
-  const selectedSet = new Set((selectedItems || []).filter(Boolean));
-  container.innerHTML = options.map((item, index) => {
-    const checked = selectedSet.size ? selectedSet.has(item) : index === 0;
-    return `<label><input type="checkbox" data-level-kind="${kind}" value="${item.replace(/"/g, '&quot;')}" ${checked ? 'checked' : ''}> ${item}</label>`;
-  }).join('');
-}
-
-function onLevelFieldChange(kind) {
-  renderLevelCheckOptions(kind, collectLevelItems(kind));
-  updateFinalLevel();
+  const container = document.getElementById(kind === 'biz' ? 'biz_level_checks' : 'svc_level_checks');
+  const options = Object.entries(LEVEL_IMPACT_OPTIONS)
+    .flatMap(([level, items]) => items.map(item => ({level, item})));
+  const selectedSet = new Set(selectedItems || []);
+  const victims = ['公民、法人和其他组织的合法权益', '社会秩序和公共利益', '国家安全或地区安全、国计民生'];
+  container.innerHTML = `<table class="level-matrix">
+    <thead><tr><th scope="col">受侵害客体</th><th scope="col">一般损害</th><th scope="col">严重损害</th><th scope="col">特别严重损害</th></tr></thead>
+    <tbody>${victims.map((victim, row) => `<tr><th scope="row">${victim}</th>${options.slice(row * 3, row * 3 + 3).map(({level, item}) =>
+      `<td><label><input type="checkbox" data-level-kind="${kind}" value="${item}" aria-label="${item}（${level}）" ${selectedSet.has(item) ? 'checked' : ''}><span>${level}</span></label></td>`
+    ).join('')}</tr>`).join('')}</tbody>
+  </table>`;
+  container.onchange = () => { updateFinalLevel(); updatePreview(); };
 }
 
 function collectLevelItems(kind) {
@@ -1358,8 +1361,32 @@ function updatePreview() {
     '<p class=\"hint\" style=\"margin-top:8px;\">点击 Step 3 的"预览"按钮可用 Word 查看完整效果</p>';
 }
 
+function updateObjectCounts(input) {
+  const group = input.closest('[data-object-counts]');
+  if (!group) return;
+  const [total, ...levels] = group.querySelectorAll('input');
+  delete input.dataset.countAuto;
+  if (input === total) return;
+  const entered = levels.filter(el => el.value.trim() && !el.dataset.countAuto);
+  const numbers = entered.map(el => el.value.trim().replace(/\s*个$/, ''));
+  if (numbers.some(value => !/^\d+$/.test(value))) return;
+  if (!entered.length) {
+    [total, ...levels].forEach(el => { el.value = ''; delete el.dataset.countAuto; });
+    return;
+  }
+  total.value = numbers.reduce((sum, value) => sum + BigInt(value), 0n).toString();
+  total.dataset.countAuto = 'true';
+  levels.forEach(el => {
+    if (!el.value.trim() || el.dataset.countAuto) {
+      el.value = '0';
+      el.dataset.countAuto = 'true';
+    }
+  });
+}
+
 // 监听输入变化更新预览
 document.addEventListener('input', function(e) {
+  updateObjectCounts(e.target);
   if (currentStep === 1) updatePreview();
   // 标记手动修改
   if (e.target.classList.contains('auto-filled')) {
@@ -1370,12 +1397,15 @@ document.addEventListener('input', function(e) {
 
 // ── 工具函数 ──
 function updateFinalLevel() {
-  const levels = {'第一级':1,'第二级':2,'第三级':3,'第四级':4,'第五级':5};
-  const biz = levels[document.getElementById('biz_level').value] || 2;
-  const svc = levels[document.getElementById('svc_level').value] || 2;
-  const final = Math.max(biz, svc);
-  const names = {1:'第一级',2:'第二级',3:'第三级',4:'第四级',5:'第五级'};
-  document.getElementById('final_level').textContent = names[final];
+  const names = ['', ...Object.keys(LEVEL_IMPACT_OPTIONS)];
+  const results = ['biz', 'svc'].map(kind => {
+    const selected = new Set(collectLevelItems(kind));
+    const level = Object.entries(LEVEL_IMPACT_OPTIONS).reduce((highest, [name, items]) =>
+      items.some(item => selected.has(item)) ? Math.max(highest, names.indexOf(name)) : highest, 0);
+    document.getElementById(kind === 'biz' ? 'biz_level' : 'svc_level').value = names[level];
+    return level;
+  });
+  document.getElementById('final_level').textContent = names[Math.max(...results)];
 }
 
 function copySec2Data() {
@@ -1468,18 +1498,12 @@ function onTargetTypeChange() {
 
 function toggleOtherInput(selectEl, inputId) {
   const input = document.getElementById(inputId);
-  const isOther = selectEl.value.includes('其他') || selectEl.value.startsWith('99') || selectEl.value.startsWith('9-');
+  const value = selectEl.value.trim();
+  const isOther = /^(?:9|99)(?:-|$)/.test(value) || value === '其他' || value === '其它';
   input.style.display = isOther ? '' : 'none';
   if (!isOther) {
     input.value = '';
     return;
-  }
-  const defaultValues = {
-    svc_scope_other: '本单位',
-    interconnect_other: '无连接',
-  };
-  if (!input.value.trim() && Object.prototype.hasOwnProperty.call(defaultValues, inputId)) {
-    input.value = defaultValues[inputId];
   }
 }
 
@@ -1524,11 +1548,7 @@ function onStorageTypeChange() {
 function onSupervisorChange() {
   const has = document.getElementById('has_supervisor').checked;
   const input = document.getElementById('supervisor_name');
-  if (!has) {
-    input.value = '/';
-  } else if (input.value.trim() === '/') {
-    input.value = '';
-  }
+  if (!has || input.value.trim() === '/') input.value = '';
   onSupervisorReviewStatusChange();
 }
 
@@ -1564,6 +1584,7 @@ function toggleInteractionFields() {
 function refreshCloudPresetOptions() {
   const kind = document.getElementById('cloud_provider_kind').value;
   const preset = document.getElementById('cloud_provider_preset');
+  preset.style.display = kind === 'manual' ? 'none' : '';
   const current = preset.value;
   const options = CLOUD_PROVIDER_PRESETS[kind] || {};
   preset.innerHTML = '<option value="">请选择</option>' + Object.entries(options)

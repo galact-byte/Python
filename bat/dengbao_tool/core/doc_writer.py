@@ -170,21 +170,14 @@ def _parse_date_parts(value):
 
 def _fill_date_cell(cell, value):
     year, month, day = _parse_date_parts(value)
-    if not year:
-        return False
-    parts = [year, month, day]
-    part_idx = 0
-    for para in cell.paragraphs:
-        runs = para.runs
-        for idx, run in enumerate(runs):
-            if any(mark in run.text for mark in ("年", "月", "日")) and idx > 0:
-                prev_run = runs[idx - 1]
-                if _is_placeholder_text(prev_run.text) and part_idx < len(parts):
-                    _set_run_text(prev_run, parts[part_idx])
-                    part_idx += 1
-        if part_idx >= len(parts):
-            return True
-    return part_idx > 0
+    prefix = '填表日期：' if '填表日期' in cell.text else ''
+    text = f'{year}年{month}月{day}日' if year else '    年  月  日'
+    if not cell.paragraphs:
+        cell.add_paragraph()
+    _replace_paragraph_text(cell.paragraphs[0], prefix + text)
+    for paragraph in cell.paragraphs[1:]:
+        paragraph._p.getparent().remove(paragraph._p)
+    return bool(year)
 
 
 def _check_first_sym_in_paragraph(paragraph, checked):
@@ -288,24 +281,32 @@ def _fill_run(cell, para_idx, run_idx, text):
 
 
 def _fill_after_keyword(cell, keyword, text):
-    """在单元格中找到 keyword 后面的空白/下划线 run，填入 text"""
+    """在固定标签后的填写 run 覆盖值，空值也覆盖已填模板。"""
     for para in cell.paragraphs:
         runs = para.runs
-        found_keyword = False
-        for i, run in enumerate(runs):
-            if keyword in run.text:
-                found_keyword = True
-                if "_" in run.text and re.search(r"_+", run.text):
-                    if _fill_placeholder_run(run, text):
-                        return True
+        for index, run in enumerate(runs):
+            if keyword not in run.text:
                 continue
-            if found_keyword and (run.text.strip() == '' or
-                                   all(c in ' _\u3000' for c in run.text)):
-                if '_' in run.text:
-                    _fill_placeholder_run(run, text)
+            if '_' in run.text:
+                return _fill_placeholder_run(run, text, keep_length=True) if text else True
+            targets = []
+            for target in runs[index + 1:]:
+                if target._r.find(qn('w:sym')) is not None:
+                    break
+                if target.font.underline or '_' in target.text:
+                    targets.append(target)
                 else:
-                    _set_run_text(run, '  ' + text)
+                    break
+            if targets:
+                _fill_form_runs(targets, text)
                 return True
+            if index + 1 < len(runs) and runs[index + 1]._r.find(qn('w:sym')) is None:
+                target = runs[index + 1]
+            else:
+                target = _insert_run_after(run)
+                _copy_run_style(run, target)
+            _set_run_text(target, '  ' + str(text or ''))
+            return True
     return False
 
 
@@ -343,13 +344,53 @@ def _insert_run_after(run):
     return new_run
 
 
+def _form_text_width(text, space_width=4):
+    """按十分之一字宽估算填写区，中文及半字宽空格分别计 10、5。"""
+    return sum(space_width if c == ' ' else 1 if c == '\u200a' else
+               10 if '\u2e80' <= c <= '\uffef' else 5 for c in text)
+
+
+def _form_run_width(run):
+    # 模板混用西文字体和中文字体的空格，不能统一按字符数量补齐。
+    fonts = run._r.xpath('./w:rPr/w:rFonts/@w:eastAsia')
+    if not fonts:
+        fonts = run._parent._p.xpath('./w:pPr/w:rPr/w:rFonts/@w:eastAsia')
+    return _form_text_width(run.text, space_width=4 if fonts == ['Times New Roman'] else 5)
+
+
+def _form_padding(width):
+    # 半字宽、细空格保持填写线连续，回读时均视为空白。
+    return '\u2002' * (width // 5) + '\u200a' * (width % 5)
+
+
+def _fill_form_runs(runs, value):
+    """覆盖填写区的值，保留空白占位及短内容后的填写线。"""
+    if not runs:
+        return False
+    value = str(value or '')
+    if not value:
+        for run in runs:
+            if run.font.underline:
+                # 空格本身决定原线长；示例文字换成等宽留白，不保留示例内容。
+                run.text = ''.join(c if c.isspace() or c == '_' else
+                                   _form_padding(_form_text_width(c)) for c in run.text)
+            elif run.text.strip(' _'):
+                run.text = ''
+        return True
+    width = sum(_form_run_width(run) for run in runs)
+    target = runs[0]
+    _set_run_text(target, value + _form_padding(max(0, width - _form_text_width(value))))
+    target.font.underline = True
+    for run in runs[1:]:
+        run.text = ''
+    return True
+
+
 def _fill_placeholder_run(run, value, pattern=r"_+", keep_length=False):
     """
     仅替换当前 run 中命中的下划线占位段，并让填充值本身保留下划线效果。
-    不再把 `_` 字符残留在填充值后面。
-
-    keep_length=True：保留原占位"视觉长度"——value 短于原下划线时，在 value 之后追加
-    剩余 `_` 字符，保持视觉填空线效果（适用于表六数据来源/流出/存储位置等需要视觉占位的字段）。
+    keep_length=True：短值后补带下划线的空白，保留原填写区的长度。
+    填写线与模板固定文字分别保留在独立 run 中。
     """
     if run is None:
         return False
@@ -364,14 +405,10 @@ def _fill_placeholder_run(run, value, pattern=r"_+", keep_length=False):
     prefix = original_text[:match.start()]
     suffix = original_text[match.end():]
 
-    # 计算剩余下划线（保持原视觉长度）
-    extra_underscores = ""
+    extra_underscores = ''
     if keep_length:
-        underline_count = match.end() - match.start()
-        value_visual = sum(2 if '一' <= c <= '鿿' else 1 for c in value)
-        remaining = underline_count - value_visual
-        if remaining > 0:
-            extra_underscores = "_" * remaining
+        remaining = _form_text_width(match.group()) - _form_text_width(value)
+        extra_underscores = _form_padding(max(0, remaining))
 
     if prefix:
         fill_run = _insert_run_after(run)
@@ -398,7 +435,16 @@ def _fill_placeholder_run(run, value, pattern=r"_+", keep_length=False):
     fill_run.font.underline = True
 
     if suffix_run is not None:
-        _set_run_text(suffix_run, extra_underscores + suffix)
+        if extra_underscores:
+            # 下划线只延伸到填写区末端，括号说明等后缀仍沿用模板格式。
+            _set_run_text(suffix_run, extra_underscores)
+            suffix_run.font.underline = True
+            if suffix:
+                label_run = _insert_run_after(suffix_run)
+                _copy_run_style(run, label_run)
+                _set_run_text(label_run, suffix)
+        else:
+            _set_run_text(suffix_run, suffix)
 
     return True
 
@@ -415,12 +461,12 @@ def _clear_other_residue(cell, option_labels=('其他', '其它')):
             # 在 label run 自身有 _+ 占位时，不清（_fill_other_option 走这条路）
             if '_' in run.text:
                 continue
-            for j in range(i + 1, len(runs)):
-                tgt = runs[j]
+            targets = []
+            for tgt in runs[i + 1:]:
                 if tgt._element.find(qn('w:sym')) is not None:
                     break
-                if tgt.text.strip() != '':
-                    _set_run_text(tgt, '')
+                targets.append(tgt)
+            _fill_form_runs(targets, '')
             return True
     return False
 
@@ -440,29 +486,16 @@ def _fill_other_option(cell, option_label, text):
         for i, run in enumerate(runs):
             if option_label not in run.text:
                 continue
-            wrote = False
-            # keyword run 自带下划线占位
-            if '_' in run.text:
-                if _fill_placeholder_run(run, text):
-                    wrote = True
-            for j in range(i + 1, len(runs)):
-                target = runs[j]
-                # 碰到下一个选项的 sym 就停
+            targets = []
+            for target in runs[i + 1:]:
                 if target._element.find(qn('w:sym')) is not None:
                     break
-                if not wrote:
-                    if '_' in target.text:
-                        if _fill_placeholder_run(target, text):
-                            wrote = True
-                            continue
-                    if target.text.strip() == '':
-                        _set_run_text(target, text)
-                        wrote = True
-                        continue
-                # 已经写过 / 找不到合适位置，但仍要清空残留 non-empty run（防止模板示例值保留）
-                if wrote and target.text.strip() != '':
-                    _set_run_text(target, '')
-            return wrote
+                targets.append(target)
+            if '_' in run.text:
+                wrote = _fill_placeholder_run(run, text, keep_length=True)
+                _fill_form_runs(targets, '')
+                return wrote
+            return _fill_form_runs(targets, text)
     return False
 
 
@@ -483,8 +516,8 @@ def _fill_numbered_lines(cell, values):
     """按段落顺序填充多行（每段一个 value）。
     兼容 3 种模板结构：
       a) 单 run 内 label+下划线（'数据来源单位2___'）→ 替换 _+ 为 value
-      b) label run + 后续空白/下划线/残留 run → 首个非 label run 写 value，其余清空
-      c) 用户未填该段 → 整段非 label 区也清空
+      b) label run + 后续填写区 → 覆盖值，保留填写线长度
+      c) 用户未填该段 → 清空示例文字，保留原占位
     """
     values = [str(v).strip() if v else '' for v in (values or [])]
     paragraphs = cell.paragraphs
@@ -518,20 +551,13 @@ def _fill_numbered_lines(cell, values):
                 if tgt.text.strip() != '':
                     _set_run_text(tgt, '')
             continue
-        # 情况 b)：label 在 i，后续 run 写 value
-        wrote = False
-        for j in range(i + 1, len(runs)):
-            tgt = runs[j]
+        # 情况 b)：汇总跨 run 的填写区，避免只保留第一个短空格 run。
+        targets = []
+        for tgt in runs[i + 1:]:
             if tgt._element.find(qn('w:sym')) is not None:
                 break
-            if not wrote:
-                if '_' in tgt.text and value:
-                    _fill_placeholder_run(tgt, value)
-                else:
-                    _set_run_text(tgt, value)
-                wrote = True
-            else:
-                _set_run_text(tgt, '')
+            targets.append(tgt)
+        wrote = _fill_form_runs(targets, value)
         # 没找到后续位置但有值 → 在 label run 末尾追加（极少见）
         if not wrote and value:
             runs[i].text = runs[i].text + value
@@ -570,21 +596,13 @@ def _fill_option_line(cell, code, value):
                 if tgt.text.strip() != '':
                     _set_run_text(tgt, '')
             return True
-        # 情况 b) label 后跟独立 value run
-        wrote = False
-        for j in range(label_idx + 1, len(runs)):
-            tgt = runs[j]
+        # 情况 b) label 后跟独立填写区，空值仍保留原占位。
+        targets = []
+        for tgt in runs[label_idx + 1:]:
             if tgt._element.find(qn('w:sym')) is not None:
                 break
-            if not wrote:
-                if '_' in tgt.text and value:
-                    _fill_placeholder_run(tgt, value)
-                else:
-                    _set_run_text(tgt, value)
-                wrote = True
-            else:
-                _set_run_text(tgt, '')
-        return wrote or not value
+            targets.append(tgt)
+        return _fill_form_runs(targets, value) or not value
     return False
 
 
@@ -598,21 +616,16 @@ def _safe_set_value(table, row, col, text):
     value = "" if text is None else str(text).strip()
     try:
         cell = table.rows[row].cells[col]
-        for p in cell.paragraphs:
-            if p.runs:
-                style_run = p.runs[0]
-                _set_run_text(p.runs[0], value)
-                _copy_run_style(style_run, p.runs[0])
-                _set_run_text(p.runs[0], value)
-                for run in p.runs[1:]:
-                    run.text = ''
-                return
-        # 没有 run 则新建
-        if cell.paragraphs and value:
-            run = cell.paragraphs[0].add_run(value)
-            if cell.paragraphs[0].runs:
-                _copy_run_style(cell.paragraphs[0].runs[0], run)
-            _set_run_text(run, value)
+        if not cell.paragraphs:
+            cell.add_paragraph()
+        for index, paragraph in enumerate(cell.paragraphs):
+            if index:
+                paragraph._p.getparent().remove(paragraph._p)
+                continue
+            if not paragraph.runs:
+                paragraph.add_run()
+            for run_index, run in enumerate(paragraph.runs):
+                _set_run_text(run, value if run_index == 0 else '')
     except (IndexError, AttributeError):
         pass
 
@@ -620,6 +633,69 @@ def _safe_set_value(table, row, col, text):
 # ══════════════════════════════════════════════════════
 #  备案表生成
 # ══════════════════════════════════════════════════════
+
+def _clear_labeled_tail(cell, label):
+    """保留固定标签，覆盖标签后的模板填写值。"""
+    found = False
+    for paragraph in cell.paragraphs:
+        if found and not paragraph._p.xpath('.//w:sym'):
+            paragraph._p.getparent().remove(paragraph._p)
+            continue
+        for run in paragraph.runs:
+            if label in run.text:
+                run.text = run.text.split(label, 1)[0] + label + '  '
+                found = True
+            elif found:
+                if run._r.find(qn('w:sym')) is not None:
+                    break
+                run.text = ''
+
+
+def _reset_beian_template(doc):
+    """每次生成先复位可填写区域，避免条件分支跳过时保留模板项目值。"""
+    for sym in doc.element.iter(qn('w:sym')):
+        sym.set(qn('w:font'), 'Wingdings 2')
+        sym.set(qn('w:char'), '0030')
+    for highlight in list(doc.element.iter(qn('w:highlight'))):
+        highlight.getparent().remove(highlight)
+    for ti, rows, ci in [(1, [14, 15, 16], 1), (2, [1, 2, 4, 5, 6, 7, 8], 2),
+                         (4, [2, 3, 17, 18, 21], 2), (6, [6], 1)]:
+        for row in rows:
+            _clear_other_residue(doc.tables[ti].cell(row, ci))
+    for ti, rows, ci, label in [(3, [13, 14, 17], 2, '附件名称'),
+                                (5, range(6), 1, '附件名称'),
+                                (4, [11, 31], 2, '附件')]:
+        for row in rows:
+            _clear_labeled_tail(doc.tables[ti].cell(row, ci), label)
+    # 场景未启用、角色未选中时同样清空填写区。
+    scenario = doc.tables[4]
+    for row in [6, 7, 10, 13, 27, 28]:
+        _safe_set_value(scenario, row, 2, '')
+    for row, text in [(5, '云服务客户数量_____个'), (26, '大数据应用数量____个'),
+                      (9, '云服务商为_________ 平台安全等级_________\n平台名称___________ 平台备案编号__________'),
+                      (30, '大数据平台服务商_____平台安全等级___________\n平台名称_____________平台备案编号___________')]:
+        _safe_set_value(scenario, row, 2, text)
+    data_table = doc.tables[6]
+    total = data_table.cell(4, 1)
+    for paragraph, text in zip(total.paragraphs, [
+            '1_____GB/_____TB（根据数据量级在适合的量级处填写）',
+            '2_____万条（若为个人信息，填写该数据涉及的个人信息条数）']):
+        text_runs = [r for r in paragraph.runs if r._r.find(qn('w:sym')) is None]
+        if not text_runs:
+            text_runs = [paragraph.add_run()]
+        for index, run in enumerate(text_runs):
+            _set_run_text(run, text if index == 0 else '')
+    for paragraph in total.paragraphs[2:]:
+        paragraph._p.getparent().remove(paragraph._p)
+    _safe_set_value(data_table, 5, 1, '_____GB/___________TB（根据数据量级在适合的量级处填写）')
+    for row, codes in [(10, range(1, 6)), (11, range(1, 4)), (12, range(1, 3))]:
+        for code in codes:
+            _fill_option_line(data_table.cell(row, 1), str(code), '')
+    for label in ['对外提供给', '委托', '与']:
+        _fill_after_keyword(data_table.cell(9, 1), label, '')
+    for label in ['源站IP地址范围', '域名', '主要协议/端口']:
+        _fill_after_keyword(doc.tables[2].cell(7, 2), label, '')
+
 
 def generate_beian(template_path: str, output_path: str, data: ProjectData, highlighted_fields=None):
     """基于新备案表模版生成填充后的备案表（精准填充）"""
@@ -648,37 +724,33 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
     target_name = tgt.name or data.project_name
     unit_name = u.unit_name
 
+    _reset_beian_template(doc)
     _autofill_attachment_names(data, unit_name, target_name)
 
     # ── 封面：备案单位填写 ──
     # 模板 L12 runs: ['备',' ','案',' ','单',' ','位：','',' ']
     # 受理那行排除（含"受理"或"盖章"），定位到真正的"备案单位："行
-    if unit_name:
-        for p in doc.paragraphs:
-            full = p.text
-            if ('备' in full and '案' in full and '单' in full and '位' in full
-                    and '受理' not in full and '盖章' not in full):
-                # 找到"位："这一 run 之后的所有 run，把 unit_name 写到下一个 run
-                label_run = None
-                colon_idx = -1
-                for i, run in enumerate(p.runs):
-                    if '位' in run.text or '：' in run.text or ':' in run.text:
-                        label_run = run
-                        if '：' in run.text or ':' in run.text:
-                            colon_idx = i
-                if colon_idx >= 0 and colon_idx + 1 < len(p.runs):
+    for p in doc.paragraphs:
+        full = p.text
+        if ('备' in full and '案' in full and '单' in full and '位' in full
+                and '受理' not in full and '盖章' not in full):
+            label_run = None
+            colon_idx = -1
+            for i, run in enumerate(p.runs):
+                if '位' in run.text or '：' in run.text or ':' in run.text:
+                    label_run = run
+                    if '：' in run.text or ':' in run.text:
+                        colon_idx = i
+            if colon_idx >= 0:
+                if colon_idx + 1 < len(p.runs):
                     target = p.runs[colon_idx + 1]
-                    target.text = unit_name
-                    # 清空"位："之后所有其它 run（避免末尾残留多余空格）
-                    for run in p.runs[colon_idx + 2:]:
-                        run.text = ""
-                    if label_run:
-                        target.font.name = label_run.font.name
-                        target.font.size = label_run.font.size
-                        target.font.bold = label_run.font.bold
-                        if label_run.font.name:
-                            _set_east_asia_font(target, label_run.font.name)
-                break
+                else:
+                    target = p.add_run()
+                target.text = unit_name
+                for run in p.runs[colon_idx + 2:]:
+                    run.text = ''
+                _copy_run_style(label_run, target)
+            break
 
     # ── 表标题替换 （ / ） → （定级对象名） ──
     # 同时处理表五标题："表五（  ）定级对象提交材料情况"（括号内是全角空格）
@@ -753,11 +825,11 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
         code = u.industry.split('-')[0] if '-' in u.industry else u.industry
         _find_and_check(t2.rows[16].cells[1], code)
 
-    # 定级对象数量（自动补"个"后缀，未填值则置 "0个"，保持原模板视觉一致）
+    # 数量留空时保持空白，显式填写的 0 保留为 0个。
     def _cnt(v):
-        v = str(v or "").strip()
+        v = '' if v is None else str(v).strip()
         if not v:
-            return "0个"
+            return ''
         return v if v.endswith("个") else f"{v}个"
 
     _safe_set_value(t2, 17, 1, _cnt(u.current_total))
@@ -782,12 +854,11 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
     seen = set()
     code_idx = 0
     for i in range(4, len(row0)):
-        cell_id = id(row0[i])
+        cell_id = row0[i]._tc
         if cell_id not in seen:
             seen.add(cell_id)
-            if code_idx < len(code):
-                _safe_set_value(t3, 0, i, code[code_idx])
-                code_idx += 1
+            _safe_set_value(t3, 0, i, code[code_idx] if code_idx < len(code) else '')
+            code_idx += 1
 
     # 定级对象类型（勾选）
     type_cell = t3.rows[1].cells[2]
@@ -816,7 +887,7 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
     if tgt.service_scope:
         code = tgt.service_scope.split('-')[0] if '-' in tgt.service_scope else tgt.service_scope
         _find_and_check(t3.rows[4].cells[2], code)
-        service_scope_other = tgt.service_scope_other or ('本单位' if code == '99' else '')
+        service_scope_other = tgt.service_scope_other
         if code == '99' and service_scope_other:
             _fill_other_option(t3.rows[4].cells[2], '其它', service_scope_other)
         else:
@@ -845,7 +916,9 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
         code = tgt.network_type.split('-')[0] if '-' in tgt.network_type else tgt.network_type
         _find_and_check(t3.rows[7].cells[2], code)
         if code == '2':
-            _fill_numbered_lines(t3.rows[7].cells[2], [tgt.source_ip, tgt.domain, tgt.protocol_port])
+            for label, value in [('源站IP地址范围', tgt.source_ip),
+                                 ('域名', tgt.domain), ('主要协议/端口', tgt.protocol_port)]:
+                _fill_after_keyword(t3.rows[7].cells[2], label, value)
         if code == '9' and tgt.network_type_other:
             _fill_other_option(t3.rows[7].cells[2], '其他', tgt.network_type_other)
 
@@ -853,7 +926,7 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
     if tgt.interconnect:
         code = tgt.interconnect.split('-')[0] if '-' in tgt.interconnect else tgt.interconnect
         _find_and_check(t3.rows[8].cells[2], code)
-        interconnect_other = tgt.interconnect_other or ('无连接' if code == '9' else '')
+        interconnect_other = tgt.interconnect_other
         if code == '9' and interconnect_other:
             _fill_other_option(t3.rows[8].cells[2], '其它', interconnect_other)
 
@@ -865,8 +938,8 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
         _find_and_check(t3.rows[10].cells[2], tgt.is_subsystem)
 
     # 上级系统
-    _safe_set_value(t3, 11, 2, tgt.parent_system or '/')
-    _safe_set_value(t3, 12, 2, tgt.parent_unit or '/')
+    _safe_set_value(t3, 11, 2, tgt.parent_system)
+    _safe_set_value(t3, 12, 2, tgt.parent_unit)
 
     # ══════ 表4: 定级等级 (index 3, 5列) ══════
     t4 = doc.tables[3]
@@ -874,12 +947,12 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
     biz_row_map = {"第一级": 1, "第二级": 2, "第三级": 3, "第四级": 4, "第五级": 5}
     svc_row_map = {"第一级": 6, "第二级": 7, "第三级": 8, "第四级": 9, "第五级": 10}
 
-    if g.biz_level in biz_row_map:
-        _check_paragraph_items(t4.rows[biz_row_map[g.biz_level]].cells[1], g.biz_level_items)
-        _check_first_sym_in_paragraph(t4.rows[biz_row_map[g.biz_level]].cells[4].paragraphs[0], True)
-    if g.service_level in svc_row_map:
-        _check_paragraph_items(t4.rows[svc_row_map[g.service_level]].cells[1], g.service_level_items)
-        _check_first_sym_in_paragraph(t4.rows[svc_row_map[g.service_level]].cells[4].paragraphs[0], True)
+    for level, items, level_map in [(g.biz_level, g.biz_level_items, biz_row_map),
+                                    (g.service_level, g.service_level_items, svc_row_map)]:
+        for name, row in level_map.items():
+            matched = _check_paragraph_items(t4.rows[row].cells[1], items)
+            _check_first_sym_in_paragraph(t4.rows[row].cells[4].paragraphs[0],
+                                          matched or name == level)
     if g.final_level:
         _find_and_check(t4.rows[11].cells[2], g.final_level, multi=True)
 
@@ -911,7 +984,7 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
     else:
         _find_and_check(supervisor_cell, '无')
 
-    _safe_set_value(t4, 16, 2, g.supervisor_name or '/')
+    _safe_set_value(t4, 16, 2, g.supervisor_name)
     audit_cell = t4.rows[17].cells[2]
     audit_status = g.supervisor_review_status or ('已审核' if g.supervisor_reviewed else '未审核')
     _find_and_check(audit_cell, audit_status)
@@ -950,7 +1023,7 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
                 _fill_cloud_provider_line(
                     t5.rows[9].cells[2],
                     sc.cloud.provider_name,
-                    sc.cloud.platform_level or '三级',
+                    sc.cloud.platform_level,
                     sc.cloud.platform_name,
                     _normalize_platform_code(sc.cloud.platform_code),
                 )
@@ -995,7 +1068,7 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
                 _fill_cloud_provider_line(
                     t5.rows[30].cells[2],
                     sc.bigdata.platform_provider,
-                    sc.bigdata.platform_level or '第三级',
+                    sc.bigdata.platform_level,
                     sc.bigdata.platform_name,
                     _normalize_platform_code(sc.bigdata.platform_code),
                 )
@@ -1061,7 +1134,9 @@ def _fill_beian_internal(doc, data: ProjectData, highlighted_fields):
             code = d.interaction.split('-')[0]
             _find_and_check(t7.rows[9].cells[1], code)
             if code != '4' and d.interaction_other:
-                _fill_numbered_lines(t7.rows[9].cells[1], [d.interaction_other])
+                label = {'1': '对外提供给', '2': '委托', '3': '与'}.get(code)
+                if label:
+                    _fill_after_keyword(t7.rows[9].cells[1], label, d.interaction_other)
         if d.storage_type:
             code = d.storage_type.split('-')[0]
             _find_and_check(t7.rows[10].cells[1], code)
@@ -1315,11 +1390,13 @@ def _check_paragraph_items(cell, items):
     targets = {str(item).strip() for item in (items or []) if str(item).strip()}
     if not targets:
         return False
+    matched = False
     for para in cell.paragraphs:
         text = "".join(run.text for run in para.runs if run.text).strip()
-        if any(target in text for target in targets):
+        if text in targets:
             _check_first_sym_in_paragraph(para, True)
-    return True
+            matched = True
+    return matched
 
 
 # ══════════════════════════════════════════════════════
@@ -1354,6 +1431,12 @@ def generate_report(template_path: str, output_path: str,
         "1、系统服务描述": (report.svc_desc, "rpt_svc_desc", False),
         "2、系统服务受到破坏时所侵害客体的确定": (report.svc_victim, "rpt_svc_victim", False),
         "3、系统服务受到破坏时对侵害客体的侵害程度的确定": (report.svc_degree, "rpt_svc_degree", False),
+        "4、业务信息安全保护等级的确定": (
+            f"依据业务信息受到破坏时所侵害的客体以及侵害程度，确定业务信息安全保护等级为{report.biz_level}。" if report.biz_level else '', '', False),
+        "4、系统服务安全保护等级的确定": (
+            f"依据系统服务受到破坏时所侵害的客体以及侵害程度，确定系统服务安全保护等级为{report.svc_level}。" if report.svc_level else '', '', False),
+        "（三）安全保护等级的确定": (
+            f"定级对象的安全保护等级由业务信息安全保护等级和系统服务安全保护等级较高者决定，最终确定{system_name}的网络安全保护等级为{report.final_level}。" if report.final_level else '', '', False),
     }
 
     # 按段落顺序划分章节正文（标题段之后、下一个标题之前的所有非空段为该节正文）
@@ -1366,12 +1449,15 @@ def generate_report(template_path: str, output_path: str,
         return bool(
             re.match(r"^[一二三四五六七八九十]+、", t) or
             re.match(r"^（[一二三四五六七八九十]）", t) or
-            re.match(r"^\d+、", t)
+            re.match(r"^\d+、", t) or re.match(r"^表[一二三四五六七八九十]+", t) or
+            ('单位' in t and '盖章' in t) or re.match(r'^\s*\d{4}\s*年', t)
         )
 
     for p in paragraphs_all:
         text = p.text.strip()
         if not text:
+            if current_value is not None and p._p.xpath('.//w:drawing | .//w:pict'):
+                current_body_paras.append(p)
             continue
         matched_key = None
         for key in section_title_to_value:
@@ -1419,10 +1505,25 @@ def generate_report(template_path: str, output_path: str,
         if not text:
             continue
 
-        # 替换标题（XX → 项目名），保持格式一致
-        if "XX" in text and "定级报告" in text:
-            _replace_paragraph_text(p, text.replace("XX", system_name))
+        # 标题以当前对象名称覆盖，兼容已填示例与占位模板。
+        if text.endswith('网络安全等级保护定级报告') or ('XX' in text and '定级报告' in text):
+            _replace_paragraph_text(p, f'{system_name}网络安全等级保护定级报告')
             _apply_report_title_format(p)
+            continue
+
+        if '单位' in text and '盖章' in text:
+            _replace_paragraph_text(p, '单位    （盖章）')
+            _apply_report_body_format(p)
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            p.paragraph_format.space_before = Pt(48)
+            p.paragraph_format.space_after = Pt(14)
+            p.paragraph_format.keep_with_next = True
+            continue
+        if re.fullmatch(r'\s*(?:\d{4}|X{4}|_+)?\s*年\s*(?:\d{1,2}|X+|_+)?\s*月\s*(?:\d{1,2}|X+|_+)?\s*日\s*', text):
+            year, month, day = _parse_date_parts(report.signature_date)
+            _replace_paragraph_text(p, f'{year}年 {month} 月 {day} 日' if year else '    年  月  日')
+            _apply_report_body_format(p)
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
             continue
 
         # 清除所有填写说明（【...】标记的内容）
@@ -1471,7 +1572,14 @@ def generate_report(template_path: str, output_path: str,
         if parent is not None:
             parent.remove(p._element)
 
+    # 去掉已删除示例图的关系，避免图像继续打包进生成文档。
+    used_images = set(doc.element.xpath('.//@r:embed | .//@r:id'))
+    for rel_id, rel in list(doc.part.rels.items()):
+        if rel.reltype.endswith('/image') and rel_id not in used_images:
+            doc.part.drop_rel(rel_id)
+
     # ── 清除多余空行（连续2个以上空段落压缩为1个） ──
+
     _remove_consecutive_blanks(doc)
 
     # ── 插入网络拓扑图（放在"定级对象构成"描述文字之后） ──
@@ -1539,11 +1647,25 @@ def _shade_matrix_tables(doc, report):
         table = next((item for item in doc.tables if header_text in _cell_text_safe(item, 0, 0)), None)
         if table is None:
             continue
-        row_idx = _match_matrix_row(victim_text)
-        col_idx = _match_matrix_col(degree_text)
-        if row_idx is None or col_idx is None:
-            continue
-        _shade_cell_gray(table.rows[row_idx].cells[col_idx])
+        # 全部表头、行头与交叉格先复位，再根据当前输入涂色。
+        seen = set()
+        for row in table.rows:
+            for cell in row.cells:
+                if cell._tc in seen:
+                    continue
+                seen.add(cell._tc)
+                for shading in cell._tc.xpath('./w:tcPr/w:shd'):
+                    shading.getparent().remove(shading)
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.color.rgb = RGBColor(0, 0, 0)
+        items = report.biz_level_items if header_text.startswith('业务') else report.svc_level_items
+        pairs = {(_match_matrix_row(item), _match_matrix_col(item)) for item in (items or [])}
+        if not pairs:
+            pairs = {(_match_matrix_row(victim_text), _match_matrix_col(degree_text))}
+        for row_idx, col_idx in pairs:
+            if row_idx is not None and col_idx is not None:
+                _shade_cell_gray(table.rows[row_idx].cells[col_idx])
 
 
 def _match_matrix_row(text):
@@ -1578,7 +1700,7 @@ def _shade_cell_gray(cell):
     shading = OxmlElement('w:shd')
     shading.set(qn('w:val'), 'clear')
     shading.set(qn('w:color'), 'auto')
-    shading.set(qn('w:fill'), '808080')
+    shading.set(qn('w:fill'), '7E7E7E')
     tc_pr.append(shading)
     # 设置文字为白色
     for para in cell.paragraphs:
